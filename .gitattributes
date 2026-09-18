@@ -1,0 +1,2 @@
+# The build is byte-deterministic: no EOL normalisation anywhere.
+* -text

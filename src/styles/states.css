@@ -1,0 +1,318 @@
+            /* --- Heading permalinks (R21) --- */
+            .h-anchor {
+                opacity: 0;
+                margin-left: var(--space-2);
+                color: var(--icon-color);
+                transition: opacity 0.15s ease;
+                border-radius: 4px;
+            }
+            .h-anchor svg {
+                width: 14px;
+                height: 14px;
+                fill: none;
+                stroke: currentColor;
+                stroke-width: 2;
+                stroke-linecap: round;
+                stroke-linejoin: round;
+                vertical-align: middle;
+            }
+            #content h1:hover .h-anchor,
+            #content h2:hover .h-anchor,
+            #content h3:hover .h-anchor,
+            #content h4:hover .h-anchor,
+            #content h5:hover .h-anchor,
+            #content h6:hover .h-anchor,
+            .h-anchor:focus-visible {
+                opacity: 1;
+                color: var(--accent-color);
+            }
+            @media (hover: none) {
+                .h-anchor {
+                    opacity: 0.55;
+                }
+            }
+
+            /* --- Syntax highlighting tokens (R18) --- */
+            #content .hljs-comment {
+                color: var(--hl-comment);
+                font-style: italic;
+            }
+            #content .hljs-keyword,
+            #content .hljs-selector-tag {
+                color: var(--hl-keyword);
+            }
+            #content .hljs-string,
+            #content .hljs-regexp {
+                color: var(--hl-string);
+            }
+            #content .hljs-number,
+            #content .hljs-literal,
+            #content .hljs-builtin {
+                color: var(--hl-number);
+            }
+            #content .hljs-title,
+            #content .hljs-function {
+                color: var(--hl-title);
+            }
+            #content .hljs-attr,
+            #content .hljs-attribute {
+                color: var(--hl-attr);
+            }
+            #content .hljs-symbol,
+            #content .hljs-variable,
+            #content .hljs-template-variable {
+                color: var(--hl-variable);
+            }
+            #content .hljs-meta,
+            #content .hljs-doctag {
+                color: var(--hl-meta);
+            }
+            #content .hljs-tag {
+                color: var(--hl-meta);
+            }
+            #content .hljs-name {
+                color: var(--hl-tag);
+            }
+            #content .hljs-section {
+                color: var(--hl-title);
+                font-weight: 600;
+            }
+            #content .hljs-strong {
+                font-weight: 600;
+            }
+            #content .hljs-emphasis {
+                font-style: italic;
+            }
+            #content .hljs-addition {
+                color: var(--hl-addition);
+            }
+            #content .hljs-deletion {
+                color: var(--hl-deletion);
+            }
+
+            /* --- Empty / error states --- */
+            .empty,
+            .fatal {
+                text-align: center;
+                padding: var(--space-8) var(--space-4);
+                max-width: 460px;
+                margin: 10vh auto 0;
+            }
+            .empty-mark {
+                color: var(--icon-color);
+                margin-bottom: var(--space-4);
+            }
+            .empty-mark svg {
+                width: 44px;
+                height: 44px;
+                fill: none;
+                stroke: currentColor;
+                stroke-width: 1.5;
+                stroke-linecap: round;
+                stroke-linejoin: round;
+            }
+            .empty-title {
+                font-size: 1.3rem;
+                font-weight: 600;
+                margin-bottom: var(--space-2);
+            }
+            .empty-sub {
+                color: var(--secondary-text);
+                margin-bottom: var(--space-6);
+            }
+            .empty-hint {
+                color: var(--secondary-text);
+                font-size: 0.8rem;
+                margin-top: var(--space-6);
+            }
+            .btn-primary {
+                background: var(--accent-color);
+                color: #fff;
+                border: none;
+                border-radius: var(--radius-md);
+                padding: 10px var(--space-4);
+                font: inherit;
+                font-weight: 600;
+                cursor: pointer;
+                min-height: 44px;
+            }
+            .btn-primary:hover {
+                filter: brightness(1.08);
+            }
+            .btn-primary:active {
+                transform: scale(0.98);
+            }
+            .link-btn {
+                background: none;
+                border: none;
+                color: var(--secondary-text);
+                cursor: pointer;
+                font: inherit;
+                font-size: 0.8rem;
+                text-decoration: underline;
+                padding: var(--space-1);
+            }
+            .link-btn:hover {
+                color: var(--danger);
+            }
+
+            .fatal h1 {
+                font-size: 1.2rem;
+                margin-bottom: var(--space-3);
+            }
+            .fatal p {
+                color: var(--secondary-text);
+                margin-bottom: var(--space-6);
+                word-break: break-word;
+            }
+
+            /* --- Drop overlay --- */
+            .drop-overlay {
+                position: fixed;
+                inset: 0;
+                z-index: var(--z-drop);
+                background: var(--scrim-bg);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                pointer-events: none;
+            }
+            .drop-overlay .drop-card {
+                background: var(--bg-color);
+                color: var(--text-color);
+                border: 2px dashed var(--accent-color);
+                border-radius: var(--radius-md);
+                padding: var(--space-8) var(--space-8);
+                font-weight: 600;
+                font-size: 1.05rem;
+            }
+
+            /* --- Footer & toast --- */
+            .footer {
+                text-align: center;
+                padding: var(--space-4) 0;
+                padding-bottom: calc(var(--space-4) + env(safe-area-inset-bottom));
+                color: var(--secondary-text);
+                font-size: 0.7rem;
+                margin-top: auto;
+                letter-spacing: 0.15em;
+                text-transform: uppercase;
+            }
+            .toast {
+                position: fixed;
+                bottom: calc(var(--space-6) + env(safe-area-inset-bottom));
+                left: 50%;
+                transform: translateX(-50%) translateY(10px);
+                background: var(--text-color);
+                color: var(--bg-color);
+                padding: 8px var(--space-4);
+                border-radius: var(--radius-md);
+                font-size: 0.8rem;
+                opacity: 0;
+                pointer-events: none;
+                transition: all 0.2s ease;
+                z-index: var(--z-toast);
+                box-shadow: var(--shadow-1);
+                max-width: min(90vw, 480px);
+            }
+            .toast.show {
+                opacity: 1;
+                transform: translateX(-50%) translateY(0);
+            }
+            .toast.is-error {
+                background: var(--danger);
+                color: #fff;
+            }
+
+            /* --- Image lightbox (M5 Proposal A): the document's own image
+               at full size, over a calm dark scrim. Clicks, the close
+               button and Esc all dismiss; linked badge images never zoom. */
+            .lightbox {
+                position: fixed;
+                inset: 0;
+                z-index: var(--z-lightbox);
+                background: rgba(8, 11, 15, 0.92);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                padding: 5vmin;
+                border: none;
+                width: 100%;
+                animation: lightbox-in 0.16s ease;
+            }
+            @keyframes lightbox-in {
+                from {
+                    opacity: 0;
+                }
+            }
+            .lightbox-figure {
+                margin: 0;
+                max-width: 100%;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                animation: lightbox-zoom 0.16s ease;
+            }
+            @keyframes lightbox-zoom {
+                from {
+                    transform: scale(0.965);
+                }
+            }
+            .lightbox-figure img {
+                max-width: 92vw;
+                max-height: 84vh;
+                width: auto;
+                height: auto;
+                border-radius: var(--radius-md);
+                box-shadow: var(--shadow-2);
+                /* Never inherit the dark theme's image dimming */
+                filter: none !important;
+            }
+            .lightbox-figure figcaption {
+                margin-top: var(--space-3);
+                font-size: 0.85rem;
+                color: rgba(255, 255, 255, 0.72);
+                text-align: center;
+                max-width: 78ch;
+                overflow-wrap: anywhere;
+            }
+            .lightbox-btn {
+                position: absolute;
+                top: calc(var(--space-4) + env(safe-area-inset-top));
+                right: calc(var(--space-4) + env(safe-area-inset-right));
+                width: var(--control-size);
+                height: var(--control-size);
+                border: none;
+                border-radius: 10px;
+                background: rgba(255, 255, 255, 0.08);
+                color: #f0f3f6;
+                cursor: pointer;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+            }
+            .lightbox-btn:hover {
+                background: rgba(255, 255, 255, 0.16);
+            }
+            .lightbox-btn svg {
+                width: 20px;
+                height: 20px;
+                fill: none;
+                stroke: currentColor;
+                stroke-width: 2;
+                stroke-linecap: round;
+                stroke-linejoin: round;
+            }
+            /* Content images invite zoom; images inside links keep the
+               pointer, because their link wins over the lightbox */
+            #content img {
+                cursor: zoom-in;
+            }
+            #content a img {
+                cursor: pointer;
+            }
+            /* The page behind the lightbox holds still while it is open */
+            html[data-lightbox="on"] body {
+                overflow: hidden;
+            }
+

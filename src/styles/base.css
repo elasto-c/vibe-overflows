@@ -1,0 +1,75 @@
+            /* --- Reset & base --- */
+            * {
+                box-sizing: border-box;
+                margin: 0;
+                padding: 0;
+            }
+
+            /* The hidden attribute must always win over class display rules */
+            [hidden] {
+                display: none !important;
+            }
+
+            html {
+                -webkit-text-size-adjust: 100%;
+            }
+
+            body {
+                font-family: var(--font-body);
+                font-size: var(--base-size);
+                line-height: var(--base-lh);
+                background-color: var(--bg-color);
+                color: var(--text-color);
+                min-height: 100vh;
+                display: flex;
+                flex-direction: column;
+                transition:
+                    background-color 0.2s ease,
+                    color 0.2s ease;
+            }
+
+            /* Themed text selection + quiet scrollbars (§12) */
+            ::selection {
+                background: rgba(9, 105, 218, 0.22);
+            }
+            [data-theme="dark"] ::selection {
+                background: rgba(83, 155, 245, 0.4);
+            }
+            * {
+                scrollbar-width: thin;
+                scrollbar-color: var(--border-color) transparent;
+            }
+            ::-webkit-scrollbar {
+                width: 8px;
+                height: 8px;
+            }
+            ::-webkit-scrollbar-thumb {
+                background: var(--border-color);
+                border-radius: 4px;
+            }
+            ::-webkit-scrollbar-track {
+                background: transparent;
+            }
+
+            :focus-visible {
+                outline: 2px solid var(--focus-ring);
+                outline-offset: 2px;
+                border-radius: var(--radius-sm);
+            }
+
+            .skip-link {
+                position: absolute;
+                left: -9999px;
+                top: 0;
+                background: var(--accent-color);
+                color: #fff;
+                padding: var(--space-2) var(--space-4);
+                border-radius: 0 0 var(--radius-md) 0;
+                z-index: var(--z-drop);
+                text-decoration: none;
+                font-size: 0.85rem;
+            }
+            .skip-link:focus {
+                left: 0;
+            }
+

@@ -1,0 +1,216 @@
+            /* --- Responsive: one compact tier below 720px (§10) --- */
+            @media (max-width: 720px) {
+                .toolbar {
+                    padding-left: max(var(--space-2), env(safe-area-inset-left));
+                    padding-right: max(var(--space-2), env(safe-area-inset-right));
+                    gap: var(--space-2);
+                }
+                .container {
+                    padding: var(--space-4) var(--space-4) var(--space-12);
+                }
+                .toc-sidebar {
+                    width: 100%;
+                    max-width: 100%;
+                    border-right: none;
+                }
+                /* Toast moves above the on-screen keyboard */
+                .toast {
+                    top: calc(
+                        var(--header-height) + var(--space-3) +
+                            env(safe-area-inset-top)
+                    );
+                    bottom: auto;
+                    transform: translateX(-50%) translateY(-8px);
+                }
+                .toast.show {
+                    transform: translateX(-50%) translateY(0);
+                }
+                /* Toolbar sheds everything non-essential into the menu */
+                .desktop-only {
+                    display: none !important;
+                }
+                .compact-only {
+                    display: flex;
+                }
+                hr.compact-only,
+                .menu-sep.compact-only {
+                    display: block;
+                }
+                /* Compact tables: tighter cells, smaller type */
+                #content th,
+                #content td {
+                    padding: var(--space-2) var(--space-3);
+                }
+                #content table {
+                    font-size: 0.85em;
+                }
+                /* Search layer on narrow screens: the controls read as
+                   one tight bar — no flex gap between them; the field
+                   keeps a usable 140px floor with slim horizontal
+                   padding so #find-input keeps its share of the row;
+                   the match count sizes to its content (no 56px lane,
+                   no cap); the three buttons hold a fixed 30px lane
+                   instead of the 40px square (the ID wins the cascade
+                   over .btn and the touch sizing above). */
+                .search-inner {
+                    gap: 0;
+                }
+                .search-field {
+                    min-width: 140px;
+                    padding: 0 var(--space-2);
+                }
+                .find-count {
+                    width: max-content;
+                    min-width: 0;
+                    max-width: none;
+                    font-size: 0.75rem;
+                    padding: 0 2px;
+                }
+                #find-prev,
+                #find-next,
+                #find-close {
+                    width: 30px;
+                }
+            }
+
+            /* Touch: 44px targets everywhere, no sticky hover (§10) */
+            @media (hover: none), (pointer: coarse) {
+                .btn {
+                    width: var(--control-size);
+                    height: var(--control-size);
+                }
+            }
+            @media (hover: none) {
+                .btn:hover {
+                    background-color: transparent;
+                    color: var(--icon-color);
+                }
+                .toc-link {
+                    padding: var(--space-2) var(--space-2);
+                    min-height: 44px;
+                }
+                .code-btn {
+                    min-height: 44px;
+                    min-width: 44px;
+                    padding: 0 var(--space-2);
+                }
+                .code-header {
+                    min-height: 44px;
+                }
+            }
+
+            /* --- Reduced motion --- */
+            @media (prefers-reduced-motion: reduce) {
+                *,
+                *::before,
+                *::after {
+                    animation-duration: 0.01ms !important;
+                    animation-iteration-count: 1 !important;
+                    transition-duration: 0.01ms !important;
+                    scroll-behavior: auto !important;
+                }
+            }
+
+            /* --- Print / PDF path (R14, M4) ---
+               Paper follows the reader: theme, text size, line height,
+               measure, typeface and header accent all flow through
+               untouched. Only the chrome is removed, and print-color-adjust
+               keeps dark themes and token backgrounds faithful on paper.
+               Margins are part of the page too: the @page box is full-bleed,
+               the canvas paints the theme background edge to edge, and real
+               margins are simulated with padding that is CLONED onto every
+               fragmented sheet (box-decoration-break), so no printed page
+               ever shows a white margin frame again. */
+            @media print {
+                html,
+                body {
+                    background: var(--bg-color);
+                    -webkit-print-color-adjust: exact;
+                    print-color-adjust: exact;
+                }
+                .toolbar,
+                .search-layer,
+                .palette-backdrop,
+                .help-backdrop,
+                .toc-sidebar,
+                .scrim,
+                .toast,
+                .drop-overlay,
+                .btn-top,
+                .progress,
+                .read-progress,
+                .skip-link,
+                .popover,
+                .lightbox,
+                .h-anchor {
+                    display: none !important;
+                }
+                body {
+                    display: block;
+                    padding: 18mm 16mm;
+                    box-decoration-break: clone;
+                    -webkit-box-decoration-break: clone;
+                }
+                .container {
+                    padding: 0;
+                }
+                /* The code toolbar is editing chrome, not content */
+                .code-header {
+                    display: none !important;
+                }
+                #content h1,
+                #content h2,
+                #content h3 {
+                    break-after: avoid;
+                }
+                .code-wrapper,
+                .table-wrapper,
+                blockquote,
+                figure,
+                tr {
+                    break-inside: avoid;
+                }
+                #content pre {
+                    white-space: pre-wrap;
+                    overflow-x: visible;
+                }
+                /* Paper cannot scroll: relax the screen-only column cap
+                   and table pins, hide the scroll shadows and unfold
+                   collapsed code so nothing clips on paper. */
+                .table-scroll {
+                    overflow: visible;
+                }
+                #content table {
+                    width: auto;
+                    min-width: 0 !important;
+                }
+                .table-wrapper .td-cap {
+                    max-width: none;
+                    overflow-wrap: anywhere;
+                }
+                .table-wrapper::before,
+                .table-wrapper::after {
+                    display: none;
+                }
+                #content th,
+                #content td {
+                    max-width: none;
+                }
+                #content .code-wrapper.is-collapsed pre {
+                    height: auto;
+                    overflow: visible;
+                }
+                #content .code-wrapper.is-collapsed pre::after {
+                    display: none;
+                }
+                #content a[href^="http"]::after {
+                    content: " (" attr(href) ")";
+                    font-size: 0.8em;
+                    color: #555;
+                    word-break: break-all;
+                }
+                @page {
+                    margin: 0;
+                }
+            }
+        

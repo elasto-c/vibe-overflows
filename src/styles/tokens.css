@@ -1,0 +1,176 @@
+
+            /* --- Design tokens --- */
+            :root {
+                --bg-color: #ffffff;
+                --text-color: #1f2328;
+                --secondary-text: #656d76;
+                --accent-color: #0969da;
+                --code-bg: #f6f8fa;
+                --border-color: #d0d7de;
+                --header-bg: rgba(255, 255, 255, 0.72);
+                --btn-hover: rgba(31, 35, 40, 0.06);
+                --btn-active: rgba(9, 105, 218, 0.12);
+                --btn-plate: rgba(31, 35, 40, 0.04);
+                --border-soft: rgba(208, 215, 222, 0.55);
+                --blockquote-color: #656d76;
+                --icon-color: #636c76;
+                --icon-hover: #1f2328;
+                --table-row-bg: #ffffff;
+                --table-row-alt: #f6f8fa;
+                --code-header-bg: #f3f4f6;
+                --scrim-bg: rgba(31, 35, 40, 0.45);
+                --focus-ring: #0969da;
+                --danger: #cf222e;
+                --find-bg: rgba(212, 167, 44, 0.42);
+                --find-current: rgba(255, 119, 0, 0.55);
+
+                /* Header accent hues (reading settings): muted pastel tones
+                   in light mode, soft pastel tints in dark mode. One hue is
+                   applied to every heading level at once. */
+                --h-blue: #4a7aad;
+                --h-orange: #c27a42;
+                --h-yellow: #9c7f2a;
+                --h-green: #558762;
+
+                /* Syntax highlighting palette (R18) */
+                --hl-comment: #6a737d;
+                --hl-keyword: #cf222e;
+                --hl-string: #0a3069;
+                --hl-number: #0550ae;
+                --hl-literal: #0550ae;
+                --hl-title: #8250df;
+                --hl-attr: #0550ae;
+                --hl-symbol: #953800;
+                --hl-meta: #6a737d;
+                --hl-tag: #116329;
+                --hl-builtin: #0550ae;
+                --hl-variable: #953800;
+                --hl-addition: #116329;
+                --hl-deletion: #82071e;
+
+                /* Type system: stacks (system only, zero KB) + reader prefs.
+                   Size and line-height are independent controls. */
+                --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                    Helvetica, Arial, sans-serif;
+                --font-serif: Charter, "Bitstream Charter", "Sitka Text",
+                    Cambria, Georgia, "Times New Roman", serif;
+                --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo,
+                    Consolas, "Liberation Mono", monospace;
+                --font-body: var(--font-sans);
+                --base-size: 17.5px;
+                --base-lh: 1.65;
+                --measure: 68ch;
+
+                /* Spacing scale (4px base, §12) */
+                --space-1: 4px;
+                --space-2: 8px;
+                --space-3: 12px;
+                --space-4: 16px;
+                --space-5: 20px;
+                --space-6: 24px;
+                --space-8: 32px;
+                --space-12: 48px;
+
+                --radius-sm: 4px;
+                --radius-md: 8px;
+                --radius-lg: 12px;
+                --shadow-1: 0 4px 12px rgba(0, 0, 0, 0.15);
+                --shadow-2: 0 8px 28px rgba(0, 0, 0, 0.22);
+
+                /* Z-index scale: scrim < drawer < header < progress < popover
+                   < toast < drop */
+                --z-scrim: 800;
+                --z-drawer: 900;
+                --z-header: 1000;
+                --z-search: 1400;
+                --z-progress: 1500;
+                --z-popover: 1600;
+                --z-palette: 1700;
+                --z-toast: 2000;
+                --z-lightbox: 2200;
+                --z-drop: 2500;
+
+                --header-height: 52px;
+                --control-size: 44px;
+            }
+
+            /* Reader presets: applied via data-attributes, never re-rendered.
+               Size sets the type scale only; line height is its own S/M/L
+               control so spacing can be tuned independently. */
+            html[data-size="s"] {
+                --base-size: 16px;
+            }
+            html[data-size="m"] {
+                --base-size: 17.5px;
+            }
+            html[data-size="l"] {
+                --base-size: 19.5px;
+            }
+            html[data-lh="s"] {
+                --base-lh: 1.5;
+            }
+            html[data-lh="m"] {
+                --base-lh: 1.65;
+            }
+            html[data-lh="l"] {
+                --base-lh: 1.85;
+            }
+            html[data-width="s"] {
+                --measure: 60ch;
+            }
+            html[data-width="m"] {
+                --measure: 68ch;
+            }
+            html[data-width="l"] {
+                --measure: 86ch;
+            }
+            html[data-family="serif"] {
+                --font-body: var(--font-serif);
+            }
+            html[data-family="sans"] {
+                --font-body: var(--font-sans);
+            }
+
+            [data-theme="dark"] {
+                --bg-color: #0d1117;
+                --text-color: #e6edf3;
+                --secondary-text: #7d8590;
+                --accent-color: #539bf5;
+                --code-bg: #161b22;
+                --border-color: #30363d;
+                --header-bg: rgba(13, 17, 23, 0.72);
+                --btn-hover: rgba(240, 246, 252, 0.08);
+                --btn-active: rgba(83, 155, 245, 0.22);
+                --btn-plate: rgba(240, 246, 252, 0.05);
+                --border-soft: rgba(48, 54, 61, 0.6);
+                --blockquote-color: #8b949e;
+                --icon-color: #8b949e;
+                --icon-hover: #f0f6fc;
+                --table-row-bg: #0d1117;
+                --table-row-alt: #161b22;
+                --code-header-bg: #21262d;
+                --scrim-bg: rgba(1, 4, 9, 0.6);
+                --focus-ring: #539bf5;
+                --danger: #f85149;
+                --find-bg: rgba(187, 128, 9, 0.5);
+                --find-current: rgba(227, 98, 9, 0.62);
+                --h-blue: #a3c4e8;
+                --h-orange: #e8b998;
+                --h-yellow: #e3d49f;
+                --h-green: #abd4b3;
+                --hl-comment: #8b949e;
+                --hl-keyword: #ff7b72;
+                --hl-string: #a5d6ff;
+                --hl-number: #79c0ff;
+                --hl-literal: #79c0ff;
+                --hl-title: #d2a8ff;
+                --hl-attr: #79c0ff;
+                --hl-symbol: #ffa657;
+                --hl-meta: #8b949e;
+                --hl-tag: #7ee787;
+                --hl-builtin: #79c0ff;
+                --hl-variable: #ffa657;
+                --hl-addition: #7ee787;
+                --hl-deletion: #ff7b72;
+            }
+

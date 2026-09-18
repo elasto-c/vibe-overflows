@@ -1,0 +1,472 @@
+            /* --- Content --- */
+            .container {
+                max-width: calc(var(--measure) + 2 * var(--space-6));
+                margin: 0 auto;
+                padding: var(--space-6) var(--space-6) var(--space-12);
+                width: 100%;
+                flex: 1;
+            }
+            #content:focus {
+                outline: none;
+            }
+            /* Nothing is ever silently clipped again (§7, §10) */
+            #content {
+                overflow-wrap: anywhere;
+            }
+            #content > :first-child {
+                margin-top: 0 !important;
+            }
+
+            #content h1,
+            #content h2,
+            #content h3,
+            #content h4,
+            #content h5,
+            #content h6 {
+                font-weight: 600;
+                line-height: 1.25;
+                scroll-margin-top: 72px;
+                overflow-wrap: anywhere;
+            }
+            #content h1 {
+                font-size: 1.9em;
+                margin-top: var(--space-8);
+                margin-bottom: var(--space-4);
+                border-bottom: 1px solid var(--border-color);
+                padding-bottom: 0.3em;
+            }
+            #content h2 {
+                font-size: 1.45em;
+                margin-top: var(--space-8);
+                margin-bottom: var(--space-4);
+                border-bottom: 1px solid var(--border-color);
+                padding-bottom: 0.3em;
+            }
+            #content h3 {
+                font-size: 1.22em;
+                margin-top: var(--space-6);
+                margin-bottom: var(--space-3);
+            }
+            #content h4 {
+                font-size: 1.06em;
+                margin-top: var(--space-6);
+                margin-bottom: var(--space-3);
+            }
+            #content h5 {
+                font-size: 0.95em;
+                margin-top: var(--space-6);
+                margin-bottom: var(--space-3);
+                letter-spacing: 0.02em;
+            }
+            #content h6 {
+                font-size: 0.88em;
+                margin-top: var(--space-6);
+                margin-bottom: var(--space-3);
+                color: var(--secondary-text);
+                letter-spacing: 0.02em;
+            }
+            /* Header accent (reading settings): one hue applied to every
+               heading level at once. Higher specificity than the base rules
+               above, so an active accent always wins; when the setting is
+               "none" these rules simply do not exist. */
+            html[data-accent="blue"] #content h1,
+            html[data-accent="blue"] #content h2,
+            html[data-accent="blue"] #content h3,
+            html[data-accent="blue"] #content h4,
+            html[data-accent="blue"] #content h5,
+            html[data-accent="blue"] #content h6 {
+                color: var(--h-blue);
+            }
+            html[data-accent="orange"] #content h1,
+            html[data-accent="orange"] #content h2,
+            html[data-accent="orange"] #content h3,
+            html[data-accent="orange"] #content h4,
+            html[data-accent="orange"] #content h5,
+            html[data-accent="orange"] #content h6 {
+                color: var(--h-orange);
+            }
+            html[data-accent="yellow"] #content h1,
+            html[data-accent="yellow"] #content h2,
+            html[data-accent="yellow"] #content h3,
+            html[data-accent="yellow"] #content h4,
+            html[data-accent="yellow"] #content h5,
+            html[data-accent="yellow"] #content h6 {
+                color: var(--h-yellow);
+            }
+            html[data-accent="green"] #content h1,
+            html[data-accent="green"] #content h2,
+            html[data-accent="green"] #content h3,
+            html[data-accent="green"] #content h4,
+            html[data-accent="green"] #content h5,
+            html[data-accent="green"] #content h6 {
+                color: var(--h-green);
+            }
+            #content hr {
+                border: none;
+                border-top: 1px solid var(--border-color);
+                margin: var(--space-8) 0;
+            }
+
+            #content p {
+                margin-bottom: var(--space-4);
+            }
+            #content a {
+                color: var(--accent-color);
+                text-decoration: none;
+            }
+            #content a:hover {
+                text-decoration: underline;
+            }
+            #content img {
+                max-width: 100%;
+                height: auto;
+                border-radius: var(--radius-md);
+                border: 1px solid var(--border-color);
+            }
+            [data-theme="dark"] #content img {
+                filter: brightness(0.9);
+            }
+            #content figure {
+                margin: 0 0 var(--space-4);
+            }
+            #content figure img {
+                margin: 0 auto;
+            }
+            #content figcaption {
+                font-size: 0.85em;
+                color: var(--secondary-text);
+                text-align: center;
+                margin-top: var(--space-2);
+                line-height: 1.5;
+            }
+            #content blockquote {
+                border-left: 4px solid var(--border-color);
+                color: var(--blockquote-color);
+                padding-left: var(--space-4);
+                margin-bottom: var(--space-4);
+            }
+            #content blockquote blockquote {
+                border-left-color: var(--blockquote-color);
+            }
+
+            #content ul,
+            #content ol {
+                padding-left: var(--space-6);
+                margin-bottom: var(--space-4);
+            }
+            #content li {
+                margin-bottom: var(--space-1);
+            }
+            #content li > input[type="checkbox"] {
+                margin-right: var(--space-2);
+                transform: translateY(1px);
+                /* Task checkboxes are live (M0): theme-coloured and clearly
+                   interactive. */
+                cursor: pointer;
+                accent-color: var(--accent-color);
+            }
+            #content li:has(> input[type="checkbox"]) {
+                list-style: none;
+                margin-left: -20px;
+            }
+            #content code {
+                padding: 0.2em 0.4em;
+                font-size: 85%;
+                background-color: var(--code-bg);
+                border-radius: var(--radius-sm);
+                font-family: var(--font-mono);
+            }
+            #content del {
+                opacity: 0.7;
+            }
+            #content kbd {
+                font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+                font-size: 85%;
+                border: 1px solid var(--border-color);
+                border-bottom-width: 2px;
+                border-radius: var(--radius-sm);
+                padding: 1px 5px;
+                background: var(--code-bg);
+            }
+
+            /* --- Code blocks --- */
+            .code-wrapper {
+                background-color: var(--code-bg);
+                border-radius: var(--radius-md);
+                border: 1px solid var(--border-color);
+                margin-bottom: var(--space-4);
+                overflow: hidden;
+            }
+            .code-header {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                padding: 4px var(--space-3);
+                background-color: var(--code-header-bg);
+                border-bottom: 1px solid var(--border-color);
+                font-size: 0.72rem;
+                color: var(--secondary-text);
+                font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+                text-transform: uppercase;
+                letter-spacing: 0.05em;
+            }
+            .code-btn {
+                background: transparent;
+                border: none;
+                cursor: pointer;
+                color: var(--secondary-text);
+                font: inherit;
+                font-size: 0.72rem;
+                text-transform: uppercase;
+                letter-spacing: 0.05em;
+                padding: var(--space-1) var(--space-2);
+                min-height: 28px;
+                border-radius: var(--radius-sm);
+            }
+            .code-btn:hover {
+                color: var(--text-color);
+                background-color: rgba(125, 133, 144, 0.15);
+            }
+            .code-btn[aria-pressed="true"] {
+                color: var(--accent-color);
+            }
+            .copy-code-btn.is-copied {
+                color: var(--accent-color);
+            }
+            .code-actions {
+                display: flex;
+                align-items: center;
+                gap: var(--space-1);
+            }
+            #content pre {
+                padding: var(--space-4);
+                overflow-x: auto;
+                margin: 0;
+                scroll-margin-top: 72px;
+                tab-size: 4;
+            }
+            #content pre code {
+                background: transparent;
+                padding: 0;
+                font-size: 0.88em;
+                color: var(--text-color);
+                font-family: var(--font-mono);
+            }
+            /* Per-block wrapping: ON by default, toggled independently by
+               each block's own Wrap control beside Copy. */
+            .code-wrapper.is-wrapped pre {
+                white-space: pre-wrap;
+                overflow-x: hidden;
+            }
+            .code-wrapper.is-wrapped pre code {
+                overflow-wrap: anywhere;
+                white-space: pre-wrap;
+            }
+
+            /* --- Line numbers ---
+               The enhancer splits every block into per-line spans; a CSS
+               counter paints a minimal right-aligned gutter column (one
+               3ch number, one 1ch gap). Numbers ride the logical line, so
+               they stay correct even when wrapping splits a line across
+               visual rows, and they are excluded from Copy (pseudo-element
+               content is never selected or copied). */
+            #content pre code {
+                counter-reset: src-line;
+            }
+            .code-wrapper .code-line {
+                display: block;
+                position: relative;
+                padding-left: 4ch;
+                counter-increment: src-line;
+            }
+            .code-wrapper .code-line::before {
+                content: counter(src-line);
+                position: absolute;
+                left: 0;
+                top: 0;
+                width: 3ch;
+                text-align: right;
+                color: var(--secondary-text);
+                opacity: 0.6;
+                user-select: none;
+                pointer-events: none;
+            }
+            /* A line that holds nothing still needs its row (and number). */
+            .code-wrapper .code-line:empty::after {
+                content: "\200B";
+            }
+
+            /* --- Collapsed blocks ---
+               COLLAPSE clips the block to an 88px window; an overlay that
+               paints ABOVE the glyphs fades the cut edge into the panel
+               background (a plain background-image could never fade the
+               text itself). The button reads active while folded. */
+            #content .code-wrapper.is-collapsed pre {
+                position: relative;
+                height: 88px;
+                overflow: hidden;
+            }
+            #content .code-wrapper.is-collapsed pre::after {
+                content: "";
+                position: absolute;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                height: 56px;
+                background: linear-gradient(
+                    to bottom,
+                    transparent,
+                    var(--code-bg)
+                );
+                pointer-events: none;
+            }
+
+            /* --- Tables: the wrapper is the positioning and
+               container-query frame; the inner .table-scroll is the
+               actual horizontal scroller. The enhancer wraps every cell's
+               content in a .td-cap block which caps against the
+               WRAPPER's width through the --wb-col-cap variable (50cqw,
+               "half the reading column" as pure variable math) — the cap
+               lives on the inner block, NOT the cell, so a genuinely
+               unbreakable line still floors the cell's min-content: the
+               column widens, the TABLE box grows with it, and the
+               scroller pans a complete table. Wrappable content holds a
+               single line while it fits the cap and wraps past it. The
+               scroller never scrolls vertically and hides its native
+               scrollbars on every engine; native touch and mouse
+               drag-to-scroll remain the gestures. Two edge shadows live
+               on the wrapper, OUTSIDE the scroller, so they always pin
+               to the visual edges; their opacity is driven purely by the
+               scroller's scroll position through a named scroll
+               timeline, hoisted with timeline-scope, on engines that
+               support scroll-driven animations — and they render only
+               while the table is actually pannable (settleTables toggles
+               .is-pannable from a real overflow measurement), because a
+               non-scrollable scroller has an INACTIVE timeline: no
+               animation applies there, and the raw gradients would sit
+               permanently painted on tables that cannot scroll. --- */
+            .table-wrapper {
+                /* Column cap = 50% of this wrapper's content box (cqw).
+                   Overridable per document via the same variable. */
+                --wb-col-cap: 50cqw;
+                container-type: inline-size;
+                position: relative;
+                margin-bottom: var(--space-4);
+                border-radius: var(--radius-md);
+                border: 1px solid var(--border-color);
+                width: 100%;
+                /* The scroller registers --table-scroll below; hoisting
+                   the name here lets this wrapper's pseudo-elements
+                   consume it (they live outside the scroller). */
+                timeline-scope: --table-scroll;
+            }
+            .table-scroll {
+                overflow-x: auto;
+                overflow-y: hidden;
+                scrollbar-width: none;
+                -ms-overflow-style: none;
+                overscroll-behavior-x: contain;
+                border-radius: inherit;
+                scroll-timeline-name: --table-scroll;
+                scroll-timeline-axis: inline;
+            }
+            .table-scroll::-webkit-scrollbar {
+                display: none;
+            }
+            #content table {
+                border-collapse: collapse;
+                /* Full span when the content fits; a genuinely WIDE table
+                   box (not floating ink over a truncated one) when an
+                   unbreakable line pushes past the scroller. Engines
+                   without intrinsic table sizing keep the 100% fallback. */
+                width: 100%;
+                width: max-content;
+                min-width: 100%;
+                height: auto;
+                table-layout: auto;
+                font-size: 0.95rem;
+            }
+            #content th,
+            #content td {
+                padding: var(--space-2) var(--space-4);
+                text-align: left;
+                border-bottom: 1px solid var(--border-color);
+                /* Cells opt out of the #content-wide `overflow-wrap:
+                   anywhere` (inherited): a genuinely unbreakable line must
+                   keep its width and extend the scroller's horizontal
+                   range, not shatter mid-word. Prose still wraps at the
+                   .td-cap below, since space-breaking is unaffected. */
+                overflow-wrap: normal;
+            }
+            @supports (width: 1cqw) {
+                .table-wrapper th > .td-cap,
+                .table-wrapper td > .td-cap {
+                    /* Single line while a column fits within half the
+                       wrapper; past the cap the content wraps. */
+                    max-width: var(--wb-col-cap);
+                }
+            }
+            #content th {
+                background-color: var(--code-bg);
+                font-weight: 600;
+            }
+            #content tr:nth-child(even) {
+                background-color: var(--table-row-alt);
+            }
+            #content tr:last-child td {
+                border-bottom: none;
+            }
+            /* Edge shadows pinned to the wrapper (outside the scroller,
+               so they always sit on the visual edges), driven purely by
+               scroll position — guarded so engines without scroll-driven
+               animations never fall back to time-based keyframes (which
+               would pin the shadows at their end state), and gated on
+               .is-pannable so tables that cannot scroll horizontally
+               never show them (an inactive timeline applies no
+               animation, which would leave the raw gradients painted). */
+            @supports (animation-timeline: --table-scroll) and
+                (timeline-scope: --table-scroll) {
+                .table-wrapper.is-pannable::before,
+                .table-wrapper.is-pannable::after {
+                    content: "";
+                    position: absolute;
+                    top: 0;
+                    bottom: 0;
+                    width: 24px;
+                    pointer-events: none;
+                    z-index: 2;
+                }
+                .table-wrapper.is-pannable::before {
+                    left: 0;
+                    border-radius: var(--radius-md) 0 0 var(--radius-md);
+                    background: linear-gradient(
+                        to right,
+                        rgba(0, 0, 0, 0.18),
+                        transparent
+                    );
+                    animation: table-shadow-in linear both;
+                    animation-timeline: --table-scroll;
+                    animation-range: 0px 30px;
+                }
+                .table-wrapper.is-pannable::after {
+                    right: 0;
+                    border-radius: 0 var(--radius-md) var(--radius-md) 0;
+                    background: linear-gradient(
+                        to left,
+                        rgba(0, 0, 0, 0.18),
+                        transparent
+                    );
+                    animation: table-shadow-out linear both;
+                    animation-timeline: --table-scroll;
+                    animation-range: calc(100% - 30px) 100%;
+                }
+                @keyframes table-shadow-in {
+                    from { opacity: 0; }
+                    to { opacity: 1; }
+                }
+                @keyframes table-shadow-out {
+                    from { opacity: 1; }
+                    to { opacity: 0; }
+                }
+            }
+
