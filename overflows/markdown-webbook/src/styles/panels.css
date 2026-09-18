@@ -1,0 +1,525 @@
+            /* --- Search layer (R13 v2): a focused sheet directly beneath
+               the toolbar, reading as one system with it --- */
+            .search-layer {
+                position: fixed;
+                top: var(--header-height);
+                left: 0;
+                right: 0;
+                z-index: var(--z-search);
+                background: var(--header-bg);
+                -webkit-backdrop-filter: blur(16px) saturate(1.6);
+                backdrop-filter: blur(16px) saturate(1.6);
+                border-bottom: 1px solid var(--border-soft);
+                box-shadow: 0 10px 28px rgba(0, 0, 0, 0.09);
+                padding: var(--space-3) max(var(--space-4), env(safe-area-inset-right))
+                    var(--space-3) max(var(--space-4), env(safe-area-inset-left));
+                transform: translateY(-10px);
+                opacity: 0;
+                visibility: hidden;
+                transition:
+                    transform 0.18s cubic-bezier(0.4, 0, 0.2, 1),
+                    opacity 0.18s ease,
+                    visibility 0.18s;
+            }
+            .search-layer[data-open="on"] {
+                transform: translateY(0);
+                opacity: 1;
+                visibility: visible;
+            }
+            .search-inner {
+                max-width: 760px;
+                margin: 0 auto;
+                display: flex;
+                align-items: center;
+                gap: var(--space-2);
+            }
+            .search-field {
+                flex: 1;
+                display: flex;
+                align-items: center;
+                gap: var(--space-2);
+                min-width: 0;
+                background: var(--btn-hover);
+                border: 1px solid transparent;
+                border-radius: var(--radius-md);
+                padding: 0 var(--space-3);
+                min-height: 42px;
+                transition:
+                    border-color 0.15s ease,
+                    background-color 0.15s ease;
+            }
+            .search-field:focus-within {
+                border-color: var(--accent-color);
+                background: var(--bg-color);
+            }
+            .search-field svg {
+                width: 16px;
+                height: 16px;
+                flex-shrink: 0;
+                fill: none;
+                stroke: var(--icon-color);
+                stroke-width: 2;
+                stroke-linecap: round;
+            }
+            #find-input {
+                flex: 1;
+                min-width: 0;
+                font: inherit;
+                font-size: 1rem;
+                color: var(--text-color);
+                background: transparent;
+                border: none;
+                padding: var(--space-2) 0;
+            }
+            #find-input:focus {
+                outline: none;
+            }
+            #find-input::placeholder {
+                color: var(--icon-color);
+            }
+            .find-count {
+                font-size: 0.8rem;
+                color: var(--secondary-text);
+                white-space: nowrap;
+                min-width: 56px;
+                text-align: center;
+                font-variant-numeric: tabular-nums;
+            }
+            mark.find-hl {
+                background: var(--find-bg);
+                color: inherit;
+                border-radius: 2px;
+                padding: 0 1px;
+            }
+            mark.find-hl.find-hl-current {
+                background: var(--find-current);
+                color: inherit;
+                box-shadow: 0 0 0 2px var(--find-current);
+            }
+            /* Headings jump further down while the search layer overlays */
+            html[data-find="on"] #content h1,
+            html[data-find="on"] #content h2,
+            html[data-find="on"] #content h3,
+            html[data-find="on"] #content h4,
+            html[data-find="on"] #content h5,
+            html[data-find="on"] #content h6,
+            html[data-find="on"] #content pre {
+                scroll-margin-top: 128px;
+            }
+
+            /* --- Command palette (R17) + shortcut overlay (R19) --- */
+            .palette-backdrop,
+            .help-backdrop {
+                position: fixed;
+                inset: 0;
+                z-index: var(--z-palette);
+                background: var(--scrim-bg);
+                display: flex;
+                align-items: flex-start;
+                justify-content: center;
+                padding: 12vh var(--space-4) var(--space-4);
+            }
+            .help-backdrop {
+                align-items: center;
+            }
+            /* Shared modal close button — one voice for the metadata
+               editor and the shortcuts overlay: a 30px rounded-square hit
+               target, muted at rest, plate + full-contrast glyph on
+               hover, slight press-down on activate. Panels speak with
+               this single button everywhere a dialog can be dismissed. */
+            .modal-x {
+                width: 30px;
+                height: 30px;
+                padding: 0;
+                flex-shrink: 0;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                border: none;
+                border-radius: var(--radius-md);
+                background: transparent;
+                color: var(--secondary-text);
+                cursor: pointer;
+                font: inherit;
+                transition:
+                    color 0.18s ease,
+                    background-color 0.15s ease,
+                    transform 0.06s ease;
+            }
+            .modal-x:hover {
+                background: var(--btn-hover);
+                color: var(--text-color);
+            }
+            .modal-x:active {
+                transform: scale(0.95);
+            }
+            .modal-x svg {
+                width: 16px;
+                height: 16px;
+                fill: none;
+                stroke: currentColor;
+                stroke-width: 2;
+                stroke-linecap: round;
+            }
+            .palette {
+                width: min(600px, 100%);
+                max-height: 64vh;
+                display: flex;
+                flex-direction: column;
+                overflow: hidden;
+                background: var(--bg-color);
+                border: 1px solid var(--border-soft);
+                border-radius: var(--radius-lg);
+                box-shadow: var(--shadow-2);
+            }
+            .palette-input-row {
+                display: flex;
+                align-items: center;
+                gap: var(--space-3);
+                padding: var(--space-3) var(--space-4);
+                border-bottom: 1px solid var(--border-soft);
+            }
+            .palette-input-row svg {
+                width: 16px;
+                height: 16px;
+                flex-shrink: 0;
+                fill: none;
+                stroke: var(--icon-color);
+                stroke-width: 2;
+                stroke-linecap: round;
+            }
+            #palette-input {
+                flex: 1;
+                min-width: 0;
+                border: none;
+                background: transparent;
+                font: inherit;
+                font-size: 1.05rem;
+                color: var(--text-color);
+                min-height: 36px;
+            }
+            #palette-input:focus {
+                outline: none;
+            }
+            #palette-input::placeholder {
+                color: var(--icon-color);
+            }
+            .palette-list {
+                list-style: none;
+                margin: 0;
+                padding: var(--space-2);
+                overflow-y: auto;
+                overscroll-behavior: contain;
+                flex: 1;
+            }
+            .palette-group {
+                font-size: 0.68rem;
+                font-weight: 600;
+                text-transform: uppercase;
+                letter-spacing: 0.08em;
+                color: var(--secondary-text);
+                padding: var(--space-2) var(--space-3) var(--space-1);
+            }
+            .palette-item {
+                display: flex;
+                align-items: center;
+                gap: var(--space-3);
+                padding: var(--space-2) var(--space-3);
+                min-height: 40px;
+                border-radius: var(--radius-md);
+                cursor: pointer;
+                color: var(--text-color);
+                font-size: 0.92rem;
+            }
+            .palette-item[aria-selected="true"] {
+                background: var(--btn-hover);
+            }
+            .palette-item svg {
+                width: 15px;
+                height: 15px;
+                flex-shrink: 0;
+                fill: none;
+                stroke: var(--icon-color);
+                stroke-width: 2;
+                stroke-linecap: round;
+                stroke-linejoin: round;
+            }
+            .palette-item .p-label {
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+            .palette-item .p-hint {
+                margin-left: auto;
+                flex-shrink: 0;
+            }
+            .palette-empty {
+                padding: var(--space-6) var(--space-4);
+                color: var(--secondary-text);
+                font-size: 0.9rem;
+                text-align: center;
+            }
+
+            /* Inline key caps (palette hints, help overlay, Aa footer) */
+            .kbd {
+                font-family: var(--font-mono);
+                font-size: 0.78em;
+                border: 1px solid var(--border-color);
+                border-bottom-width: 2px;
+                border-radius: var(--radius-sm);
+                padding: 1px 6px;
+                background: var(--code-bg);
+                color: var(--secondary-text);
+                white-space: nowrap;
+            }
+
+            /* --- HTML metadata editor (publication support) ---
+               Native iOS grouped-list design. Pinned header (title left,
+               close right) with the muted subtext breathing var(--space-6)
+               above and below; one inset rounded card holds the fields as
+               38px key-value rows split by hairlines (an 88px multiline
+               editor for Description); a clean divider separates the card
+               from the full-width 50/50 action bar. Shares the help-overlay
+               backdrop, panel, radii, shadows and tokens. */
+            /* .help-panel.meta-panel: the shared .help-panel base is
+               declared LATER in this sheet, so an equal-specificity
+               override here would silently lose the cascade — the
+               doubled selector keeps the meta panel at its own width and
+               zero padding (the pin and the card own all the air). */
+            .help-panel.meta-panel {
+                width: min(520px, 100%);
+                padding: 0;
+            }
+            .meta-pin {
+                position: sticky;
+                top: 0;
+                z-index: 2;
+                background: var(--bg-color);
+                /* The subtext below owns the bottom air (space-6). */
+                padding: var(--space-5) var(--space-5) 0;
+            }
+            .meta-head {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: var(--space-3);
+            }
+            .meta-head h2 {
+                font-size: 1.05rem;
+                font-weight: 700;
+                margin: 0;
+            }
+            .meta-sub {
+                margin: 0;
+                padding: var(--space-6) 0;
+                color: var(--secondary-text);
+                font-size: 0.84rem;
+                line-height: 1.5;
+            }
+            .meta-sub code {
+                font-family: var(--font-mono);
+                font-size: 0.92em;
+                background: var(--code-bg);
+                border-radius: var(--radius-sm);
+                padding: 0.1em 0.35em;
+            }
+            #meta-form {
+                padding: 0px var(--space-5) var(--space-5);
+            }
+            /* Inset grouped card: all fields live in one minimally rounded
+               container — no separate input boxes anywhere. */
+            .meta-card {
+                border: 1px solid var(--border-soft);
+                border-radius: var(--radius-lg);
+                background: var(--code-bg);
+                overflow: hidden;
+            }
+            /* Key-value rows: a fixed 38px measure, label left, value
+               right, both vertically centred. */
+            .meta-row {
+                position: relative;
+                display: flex;
+                align-items: center;
+                gap: var(--space-3);
+                height: 38px;
+                padding: 0 var(--space-4);
+                transition: background 0.12s ease;
+            }
+            .meta-row:focus-within {
+                background: var(--btn-hover);
+            }
+            /* Hairline between rows, inset to the label edge (iOS style). */
+            .meta-row + .meta-row::before {
+                content: "";
+                position: absolute;
+                top: 0;
+                left: var(--space-4);
+                right: 0;
+                border-top: 1px solid var(--border-soft);
+            }
+            .meta-row label {
+                flex: 0 0 auto;
+                min-width: 92px;
+                height: 38px;
+                display: flex;
+                align-items: center;
+                /* Labels speak in the theme's own typeface (--font-body),
+                   not a hardcoded serif family. */
+                font-family: var(--font-body);
+                font-size: 0.95rem;
+                font-weight: 700;
+                color: var(--text-color);
+                cursor: text;
+            }
+            .meta-row input,
+            .meta-row .meta-edit {
+                flex: 1 1 auto;
+                min-width: 0;
+                border: none;
+                background: transparent;
+                font: inherit;
+                font-size: 0.95rem;
+                color: var(--text-color);
+                caret-color: var(--accent-color);
+            }
+            .meta-row input {
+                height: 38px;
+                padding: 0;
+                text-align: right;
+            }
+            /* Description: an 88px borderless multiline editor. It scrolls
+               its overflow without ever drawing a scrollbar, pastes plain
+               text only, and grows no border when focused. */
+            .meta-row .meta-edit {
+                display: block;
+                height: 88px;
+                margin: 10px 0;
+                padding: 0;
+                text-align: left;
+                line-height: 1.45;
+                overflow-y: auto;
+                scrollbar-width: none;
+                -ms-overflow-style: none;
+                -webkit-overflow-scrolling: touch;
+                -webkit-user-modify: read-write-plaintext-only;
+            }
+            .meta-row .meta-edit::-webkit-scrollbar {
+                display: none;
+            }
+            .meta-row input:focus,
+            .meta-row .meta-edit:focus {
+                outline: none;
+                border: none;
+                box-shadow: none;
+            }
+            .meta-row input::placeholder {
+                color: var(--secondary-text);
+                opacity: 0.7;
+            }
+            /* The Description row keeps its 88px editor; the label pins to
+               the top-left so its first line sits on the editor's first
+               line of text. */
+            .meta-row-start {
+                height: auto;
+                min-height: 88px;
+                align-items: flex-start;
+            }
+            .meta-row-start label {
+                height: 38px;
+                margin: 6px 0;
+                align-items: flex-start;
+            }
+            /* Action bar beneath a clean divider: two equal buttons that
+               span the full width — outlined Cancel, solid-default Save. */
+            .meta-foot {
+                display: flex;
+                gap: var(--space-3);
+                margin-top: var(--space-4);
+                padding-top: var(--space-4);
+                border-top: 1px solid var(--border-soft);
+            }
+            .mbtn {
+                font: inherit;
+                font-size: 0.95rem;
+                font-weight: 600;
+                height: 38px;
+                padding: 0 var(--space-4);
+                border-radius: 10px;
+                border: 1px solid var(--border-color);
+                background: transparent;
+                color: var(--text-color);
+                cursor: pointer;
+                transition: background 0.12s ease;
+            }
+            .mbtn:hover {
+                background: var(--btn-hover);
+            }
+            .meta-foot .mbtn {
+                flex: 1 1 50%;
+                width: 100%;
+            }
+            /* Save is the solid default: filled with the theme's own text
+               colour (white on dark, black on light), Cancel stays a muted
+               outline beside it. */
+            .mbtn.primary {
+                background: var(--text-color);
+                border-color: var(--text-color);
+                color: var(--bg-color);
+            }
+            .mbtn.primary:hover {
+                background: var(--text-color);
+                opacity: 0.9;
+            }
+            @media (max-width: 480px) {
+                .meta-row label {
+                    min-width: 74px;
+                }
+            }
+
+            /* Shared dialog panel shell (shortcuts overlay; the metadata
+               editor extends it below). One coherent chrome: --radius-lg
+               corners, same border, shadow and backdrop as the palette,
+               and a 1.05rem/700 header voice shared with .meta-head h2.
+               Panel padding is --space-4; the meta panel zeroes it — its
+               sticky pin and inset card own all the air. */
+            .help-panel {
+                width: min(560px, 100%);
+                max-height: 80vh;
+                overflow-y: auto;
+                overscroll-behavior: contain;
+                background: var(--bg-color);
+                border: 1px solid var(--border-soft);
+                border-radius: var(--radius-lg);
+                box-shadow: var(--shadow-2);
+                padding: var(--space-4);
+            }
+            .help-title {
+                font-size: 1.05rem;
+                font-weight: 700;
+                margin-bottom: var(--space-2);
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+            }
+            .help-group {
+                font-size: 0.72rem;
+                font-weight: 600;
+                text-transform: uppercase;
+                letter-spacing: 0.08em;
+                color: var(--secondary-text);
+                margin: var(--space-4) 0 var(--space-2);
+            }
+            .help-row {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                gap: var(--space-4);
+                padding: var(--space-1) 0;
+                font-size: 0.9rem;
+            }
+            .help-row .keys {
+                flex-shrink: 0;
+                display: flex;
+                gap: var(--space-1);
+            }
+

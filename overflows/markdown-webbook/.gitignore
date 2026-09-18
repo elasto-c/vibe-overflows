@@ -1,0 +1,14 @@
+# The assembled artifact is COMMITTED at dist/markdown_webbook.html.
+# `node build.js` reproduces it byte-identically from the sources under
+# src/ — CI rebuilds and fails on any drift (see .github/workflows/ci.yml).
+
+# Dependencies (only needed for the verification harness)
+node_modules/
+
+# Screenshots written by the Chromium smoke run (tools/smoke_v173.py)
+tools/*.png
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+*.log

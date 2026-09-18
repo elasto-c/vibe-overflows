@@ -1,0 +1,494 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta
+            name="viewport"
+            content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+        />
+        <meta name="color-scheme" content="light dark" />
+        <meta
+            name="description"
+            content="A portable, self-contained Markdown reading environment. Open a .md file, drag and drop, or paste — no server, no account, no network."
+        />
+        <title>Markdown Webbook</title>
+        <link
+            rel="icon"
+            href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20fill='%230969da'%20d='M2%203h6a4%204%200%200%201%204%204v14a3%203%200%200%200-3-3H2z'/%3E%3Cpath%20fill='%230969da'%20d='M22%203h-6a4%204%200%200%200-4%204v14a3%203%200%200%201%203-3h7z'/%3E%3C/svg%3E"
+        />
+        <script>__WB_INLINE_JS_BOOT__</script>
+        <style>__WB_INLINE_CSS__</style>
+    </head>
+    <body>
+        <a class="skip-link" href="#content">Skip to content</a>
+
+        <header class="toolbar">
+            <div class="toolbar-left">
+                <button
+                    id="btn-toc"
+                    class="btn"
+                    aria-label="Table of contents"
+                    aria-expanded="false"
+                    aria-controls="toc-sidebar"
+                    title="Table of contents (T)"
+                >
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <line x1="8" y1="6" x2="21" y2="6"></line>
+                        <line x1="8" y1="12" x2="21" y2="12"></line>
+                        <line x1="8" y1="18" x2="21" y2="18"></line>
+                        <line x1="3" y1="6" x2="3.01" y2="6"></line>
+                        <line x1="3" y1="12" x2="3.01" y2="12"></line>
+                        <line x1="3" y1="18" x2="3.01" y2="18"></line>
+                    </svg>
+                </button>
+                <button
+                    id="btn-docs"
+                    class="btn"
+                    aria-label="Document actions: import, export"
+                    aria-controls="doc-menu"
+                    aria-expanded="false"
+                    aria-haspopup="menu"
+                    title="Document — import, export"
+                >
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path
+                            d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"
+                        ></path>
+                        <polyline points="14 2 14 8 20 8"></polyline>
+                        <line x1="8" y1="13" x2="16" y2="13"></line>
+                        <line x1="8" y1="17" x2="13" y2="17"></line>
+                    </svg>
+                </button>
+                <input
+                    type="file"
+                    id="file-input"
+                    accept=".md,.markdown,.mdown,.txt,text/markdown,text/plain"
+                    hidden
+                />
+                <span id="header-title" class="doc-title">Markdown Webbook</span>
+            </div>
+
+            <div class="toolbar-actions">
+                <button
+                    id="btn-search"
+                    class="btn desktop-only"
+                    aria-label="Search document"
+                    aria-keyshortcuts="Control+F Meta+F /"
+                    title="Search ( / )"
+                    disabled
+                >
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <circle cx="11" cy="11" r="8"></circle>
+                        <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                    </svg>
+                </button>
+                <button
+                    id="btn-aa"
+                    class="btn desktop-only"
+                    aria-label="Reading settings"
+                    aria-controls="aa-popover"
+                    aria-expanded="false"
+                    aria-haspopup="dialog"
+                    title="Reading settings"
+                >
+                    <svg
+                        viewBox="0 0 24 24"
+                        aria-hidden="true"
+                        style="font-size: 0"
+                    >
+                        <text
+                            x="12"
+                            y="17"
+                            text-anchor="middle"
+                            style="
+                                font: 600 13px -apple-system, sans-serif;
+                                fill: currentColor;
+                                stroke: none;
+                            "
+                        >
+                            Aa
+                        </text>
+                    </svg>
+                </button>
+                <button
+                    id="btn-more"
+                    class="btn compact-only"
+                    aria-label="More actions"
+                    aria-controls="more-menu"
+                    aria-expanded="false"
+                    aria-haspopup="menu"
+                    title="More actions"
+                >
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <circle cx="12" cy="5" r="1.6"></circle>
+                        <circle cx="12" cy="12" r="1.6"></circle>
+                        <circle cx="12" cy="19" r="1.6"></circle>
+                    </svg>
+                </button>
+            </div>
+
+            <div id="progress" class="progress" hidden>
+                <div class="progress-bar"></div>
+            </div>
+            <div id="read-progress" class="read-progress" aria-hidden="true">
+                <div id="read-progress-fill" class="read-progress-fill"></div>
+            </div>
+        </header>
+
+        <div
+            id="findbar"
+            class="search-layer"
+            role="search"
+            aria-label="Search document"
+            data-open="off"
+        >
+            <div class="search-inner">
+                <div class="search-field">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <circle cx="11" cy="11" r="8"></circle>
+                        <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                    </svg>
+                    <input
+                        type="text"
+                        id="find-input"
+                        placeholder="Search document…"
+                        aria-label="Search document"
+                        autocomplete="off"
+                        spellcheck="false"
+                    />
+                </div>
+                <span id="find-count" class="find-count" role="status"></span>
+                <button id="find-prev" class="btn" aria-label="Previous match" title="Previous (Shift+Enter)">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <polyline points="18 15 12 9 6 15"></polyline>
+                    </svg>
+                </button>
+                <button id="find-next" class="btn" aria-label="Next match" title="Next (Enter)">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <polyline points="6 9 12 15 18 9"></polyline>
+                    </svg>
+                </button>
+                <button id="find-close" class="btn" aria-label="Close search" title="Close (Esc)">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
+            </div>
+        </div>
+
+        <div
+            id="aa-popover"
+            class="popover"
+            role="dialog"
+            aria-label="Reading settings"
+            hidden
+        >
+            <div class="pop-body">
+                <div class="pop-title">Reading settings</div>
+                <div class="pop-row">
+                    <span class="pop-label" id="lbl-theme">Theme</span>
+                    <div class="seg" role="group" aria-labelledby="lbl-theme" data-setting="theme">
+                        <button type="button" data-value="auto" aria-pressed="false">Auto</button>
+                        <button type="button" data-value="light" aria-pressed="false">Light</button>
+                        <button type="button" data-value="dark" aria-pressed="false">Dark</button>
+                    </div>
+                </div>
+                <div class="pop-row">
+                    <span class="pop-label" id="lbl-size">Size</span>
+                    <div class="seg" role="group" aria-labelledby="lbl-size" data-setting="size">
+                        <button type="button" data-value="s" aria-pressed="false" title="Small">S</button>
+                        <button type="button" data-value="m" aria-pressed="false" title="Medium">M</button>
+                        <button type="button" data-value="l" aria-pressed="false" title="Large">L</button>
+                    </div>
+                </div>
+                <div class="pop-row">
+                    <span class="pop-label" id="lbl-lh">Line height</span>
+                    <div class="seg" role="group" aria-labelledby="lbl-lh" data-setting="lh">
+                        <button type="button" data-value="s" aria-pressed="false" title="Small (1.5)">S</button>
+                        <button type="button" data-value="m" aria-pressed="false" title="Medium (1.65)">M</button>
+                        <button type="button" data-value="l" aria-pressed="false" title="Large (1.85)">L</button>
+                    </div>
+                </div>
+                <div class="pop-row">
+                    <span class="pop-label" id="lbl-width">Width</span>
+                    <div class="seg" role="group" aria-labelledby="lbl-width" data-setting="width">
+                        <button type="button" data-value="s" aria-pressed="false" title="Narrow (60 characters)">S</button>
+                        <button type="button" data-value="m" aria-pressed="false" title="Default (68 characters)">M</button>
+                        <button type="button" data-value="l" aria-pressed="false" title="Wide (86 characters)">L</button>
+                    </div>
+                </div>
+                <div class="pop-row">
+                    <span class="pop-label" id="lbl-family">Typeface</span>
+                    <div class="seg" role="group" aria-labelledby="lbl-family" data-setting="family">
+                        <button type="button" data-value="sans" aria-pressed="false">Sans</button>
+                        <button type="button" data-value="serif" aria-pressed="false">Serif</button>
+                    </div>
+                </div>
+                <div class="pop-row">
+                    <span class="pop-label" id="lbl-raw">Raw HTML</span>
+                    <div class="seg" role="group" aria-labelledby="lbl-raw" data-setting="rawHtml">
+                        <button type="button" data-value="allow" aria-pressed="false" title="Render sanitised HTML (default)">Sanitise</button>
+                        <button type="button" data-value="strip" aria-pressed="false" title="Strict: remove all raw HTML">Strip</button>
+                    </div>
+                </div>
+                <div class="pop-row stacked">
+                    <span class="pop-label" id="lbl-accent">Header accent</span>
+                    <div class="seg swatches" role="group" aria-labelledby="lbl-accent" data-setting="accent">
+                        <button type="button" data-value="none" aria-pressed="false" title="No header accent (default)"><span class="dot dot-none" aria-hidden="true"></span>None</button>
+                        <button type="button" data-value="blue" aria-pressed="false" title="Blue header accent"><span class="dot dot-blue" aria-hidden="true"></span>Blue</button>
+                        <button type="button" data-value="orange" aria-pressed="false" title="Orange header accent"><span class="dot dot-orange" aria-hidden="true"></span>Orange</button>
+                        <button type="button" data-value="yellow" aria-pressed="false" title="Yellow header accent"><span class="dot dot-yellow" aria-hidden="true"></span>Yellow</button>
+                        <button type="button" data-value="green" aria-pressed="false" title="Green header accent"><span class="dot dot-green" aria-hidden="true"></span>Green</button>
+                    </div>
+                </div>
+                <div class="pop-foot">
+                    <button type="button" class="link-btn" id="mi-shortcuts-aa">Keyboard shortcuts</button>
+                    <span class="pop-hint">Press <span class="kbd">?</span></span>
+                </div>
+            </div>
+        </div>
+
+        <div id="doc-menu" class="popover menu" role="menu" aria-label="Document actions" data-anchor="trigger-left" hidden>
+            <button class="menu-item" id="mi-open" role="menuitem" type="button" aria-keyshortcuts="Control+O Meta+O">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+                Open Markdown file…
+            </button>
+            <button class="menu-item" id="mi-meta" role="menuitem" type="button">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="8" y1="13" x2="16" y2="13"></line><line x1="8" y1="17" x2="13" y2="17"></line></svg>
+                Edit HTML metadata
+            </button>
+            <hr class="menu-sep" />
+            <div class="menu-label">Export</div>
+            <button class="menu-item" id="mi-copy-md" role="menuitem" type="button">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                Copy Markdown
+            </button>
+            <button class="menu-item" id="mi-copy-text" role="menuitem" type="button">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><line x1="4" y1="7" x2="20" y2="7"></line><line x1="4" y1="12" x2="16" y2="12"></line><line x1="4" y1="17" x2="18" y2="17"></line></svg>
+                Copy rendered text
+            </button>
+            <button class="menu-item" id="mi-download" role="menuitem" type="button">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                Download .md
+            </button>
+            <button class="menu-item" id="mi-export" role="menuitem" type="button">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"></path><polyline points="16 6 12 2 8 6"></polyline><line x1="12" y1="2" x2="12" y2="15"></line></svg>
+                Export standalone HTML
+            </button>
+            <button class="menu-item" id="mi-publish" role="menuitem" type="button">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
+                Export publishable HTML
+            </button>
+            <button class="menu-item" id="mi-print" role="menuitem" type="button">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
+                Print / save as PDF
+            </button>
+            <hr class="menu-sep" />
+            <button class="menu-item" id="mi-pubmenu" role="menuitemcheckbox" aria-checked="true" type="button">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="12" x2="15" y2="12"></line><line x1="3" y1="18" x2="18" y2="18"></line></svg>
+                <span class="mi-label">Include document menu in publication</span>
+                <span class="pub-switch" aria-hidden="true"><span class="pub-knob"></span></span>
+            </button>
+        </div>
+
+        <div id="more-menu" class="popover menu" role="menu" aria-label="More actions" hidden>
+            <button class="menu-item" id="mi-find" role="menuitem" type="button">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                Search document…
+            </button>
+            <button class="menu-item" id="mi-settings" role="menuitem" type="button">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><text x="12" y="17" text-anchor="middle" style="font: 600 13px -apple-system, sans-serif; fill: currentColor; stroke: none;">Aa</text></svg>
+                Reading settings…
+            </button>
+            <button class="menu-item" id="mi-palette" role="menuitem" type="button" aria-keyshortcuts="Control+K Meta+K">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="9 18 15 12 9 6"></polyline><polyline points="15 18 21 12 15 6"></polyline></svg>
+                Command palette…
+                <span class="mi-note">Ctrl K</span>
+            </button>
+            <button class="menu-item" id="mi-shortcuts-menu" role="menuitem" type="button">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="6" width="20" height="12" rx="2"></rect><line x1="6" y1="10" x2="6" y2="10"></line><line x1="10" y1="10" x2="10" y2="10"></line><line x1="14" y1="10" x2="14" y2="10"></line><line x1="18" y1="10" x2="18" y2="10"></line><line x1="7" y1="14" x2="17" y2="14"></line></svg>
+                Keyboard shortcuts
+                <span class="mi-note">?</span>
+            </button>
+        </div>
+
+        <button id="btn-top" class="btn-top" aria-label="Back to top" hidden>
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+                <polyline points="18 15 12 9 6 15"></polyline>
+            </svg>
+        </button>
+
+        <div id="palette-backdrop" class="palette-backdrop" hidden>
+            <div class="palette" role="dialog" aria-modal="true" aria-label="Command palette">
+                <div class="palette-input-row">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <circle cx="11" cy="11" r="8"></circle>
+                        <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                    </svg>
+                    <input
+                        type="text"
+                        id="palette-input"
+                        placeholder="Jump to a section or run a command…"
+                        aria-label="Search commands and sections"
+                        autocomplete="off"
+                        spellcheck="false"
+                        role="combobox"
+                        aria-expanded="true"
+                        aria-controls="palette-list"
+                        aria-activedescendant=""
+                    />
+                    <span class="kbd">Esc</span>
+                </div>
+                <ul id="palette-list" class="palette-list" role="listbox" aria-label="Commands and sections"></ul>
+            </div>
+        </div>
+
+        <div id="help-backdrop" class="help-backdrop" hidden>
+            <div id="help-panel" class="help-panel" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts">
+                <div class="help-title">
+                    Keyboard shortcuts
+                    <button id="help-close" class="modal-x" aria-label="Close shortcuts">
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <line x1="18" y1="6" x2="6" y2="18"></line>
+                            <line x1="6" y1="6" x2="18" y2="18"></line>
+                        </svg>
+                    </button>
+                </div>
+                <div class="help-group">General</div>
+                <div class="help-row"><span>Command palette</span><span class="keys"><span class="kbd">Ctrl</span><span class="kbd">K</span></span></div>
+                <div class="help-row"><span>This shortcut map</span><span class="keys"><span class="kbd">?</span></span></div>
+                <div class="help-row"><span>Table of contents</span><span class="keys"><span class="kbd">T</span></span></div>
+                <div class="help-row"><span>Close panel / overlay</span><span class="keys"><span class="kbd">Esc</span></span></div>
+                <div class="help-group">Reading</div>
+                <div class="help-row"><span>Search document</span><span class="keys"><span class="kbd">/</span></span></div>
+                <div class="help-row"><span>Search document</span><span class="keys"><span class="kbd">Ctrl</span><span class="kbd">F</span></span></div>
+                <div class="help-row"><span>Next match</span><span class="keys"><span class="kbd">Enter</span></span></div>
+                <div class="help-row"><span>Previous match</span><span class="keys"><span class="kbd">Shift</span><span class="kbd">Enter</span></span></div>
+                <div class="help-group">Document</div>
+                <div class="help-row"><span>Open a file</span><span class="keys"><span class="kbd">Ctrl</span><span class="kbd">O</span></span></div>
+                <div class="help-row"><span>Import, export &amp; strict HTML</span><span class="keys"><span class="kbd">Document menu</span></span></div>
+                <div class="help-row"><span>Reading settings</span><span class="keys"><span class="kbd">Aa</span></span></div>
+            </div>
+        </div>
+
+        <button id="scrim" class="scrim" hidden tabindex="-1" aria-hidden="true"></button>
+
+        <nav id="toc-sidebar" class="toc-sidebar" aria-label="Table of contents">
+            <div class="toc-heading">Contents</div>
+            <div id="toc-content"></div>
+        </nav>
+
+        <main class="container">
+            <section id="empty-state" class="empty" hidden>
+                <div class="empty-mark" aria-hidden="true">
+                    <svg viewBox="0 0 24 24">
+                        <path
+                            d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"
+                        ></path>
+                        <path
+                            d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"
+                        ></path>
+                    </svg>
+                </div>
+                <h1 class="empty-title">A quiet place to read Markdown</h1>
+                <p class="empty-sub">
+                    Open a file, drag &amp; drop it anywhere on this page, or
+                    paste Markdown to begin.
+                </p>
+                <button id="btn-open-empty" type="button" class="btn-primary">
+                    Open a Markdown file
+                </button>
+                <p class="empty-hint">
+                    Everything stays on this device — no server, no upload, no
+                    account.
+                </p>
+            </section>
+
+            <div id="content" tabindex="-1"></div>
+
+            <section id="fatal" class="fatal" hidden role="alert">
+                <h1>Something went wrong</h1>
+                <p id="fatal-msg">
+                    The reader hit an unexpected error and could not continue.
+                </p>
+                <button id="btn-reload" type="button" class="btn-primary">
+                    Reload
+                </button>
+            </section>
+        </main>
+
+        <footer class="footer">
+            <span id="footer-title" hidden></span><span id="footer-sep" hidden> · </span>Markdown Webbook
+        </footer>
+
+        <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+        <div id="lightbox" class="lightbox" role="dialog" aria-modal="true" aria-label="Image preview" hidden>
+            <button id="lightbox-close" class="lightbox-btn" aria-label="Close image preview" title="Close (Esc)">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+            </button>
+            <figure class="lightbox-figure">
+                <img id="lightbox-img" alt="" />
+                <figcaption id="lightbox-cap" hidden></figcaption>
+            </figure>
+        </div>
+
+        <div id="meta-backdrop" class="help-backdrop" hidden>
+            <div id="meta-panel" class="help-panel meta-panel" role="dialog" aria-modal="true" aria-labelledby="meta-heading">
+                <div class="meta-pin">
+                    <div class="meta-head">
+                        <h2 id="meta-heading">HTML metadata</h2>
+                        <button id="meta-close" class="modal-x" aria-label="Close metadata editor" title="Close (Esc)">
+                            <svg viewBox="0 0 24 24" aria-hidden="true">
+                                <line x1="18" y1="6" x2="6" y2="18"></line>
+                                <line x1="6" y1="6" x2="18" y2="18"></line>
+                            </svg>
+                        </button>
+                    </div>
+                    <p class="meta-sub">Written into the <code>&lt;head&gt;</code> of the publishable HTML export. Leave a field empty to fall back to the document's own values.</p>
+                </div>
+                <form id="meta-form" novalidate>
+                    <div class="meta-card">
+                        <div class="meta-row">
+                            <label for="mf-title">Title</label>
+                            <input id="mf-title" name="title" type="text" autocomplete="off" spellcheck="false" />
+                        </div>
+                        <div class="meta-row">
+                            <label for="mf-author">Author</label>
+                            <input id="mf-author" name="author" type="text" autocomplete="off" spellcheck="false" />
+                        </div>
+                        <div class="meta-row meta-row-start">
+                            <label for="mf-desc">Description</label>
+                            <div id="mf-desc" class="meta-edit" contenteditable="true" role="textbox" aria-multiline="true" spellcheck="false"></div>
+                        </div>
+                    </div>
+                    <div class="meta-foot">
+                        <button type="button" class="mbtn" id="meta-cancel">Cancel</button>
+                        <button type="submit" class="mbtn primary" id="meta-save">Save</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <div id="drop-overlay" class="drop-overlay" hidden>
+            <div class="drop-card">Drop your Markdown file to open it</div>
+        </div>
+
+        <!--
+          Embedded document (the "publish" path). To bake a book into this file,
+          paste raw Markdown between the markers below. Any literal closing
+          script tag inside the text MUST be escaped as "<\/script" — the app's
+          Source.escapeEmbed() does this automatically for export paths.
+          Legacy files using #markdown-content / #markdown-title are still read.
+        -->
+        <script id="markdown-source" type="text/markdown">__WB_INLINE_DOC_DEFAULT__</script>
+
+        <script>__WB_INLINE_JS_MARKED__</script>
+        <script>__WB_INLINE_JS_PURIFY__</script>
+        <script>__WB_INLINE_JS_APP__</script>
+    </body>
+</html>
