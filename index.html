@@ -3,27 +3,263 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>vibe-overflows</title>
+  <title>vibe-overflows — ~/elasto-c/vibe-overflows</title>
+  <meta name="description" content="A directory of standalone applications, tools, and artifacts that started in a chat window and overflowed into code.">
+  <meta name="theme-color" content="#090a0f">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📁</text></svg>">
   <style>
-    body { font-family: system-ui, -apple-system, sans-serif; max-width: 680px; margin: 40px auto; padding: 0 16px; background: #0f172a; color: #f8fafc; }
-    h1 { border-bottom: 1px solid #334155; padding-bottom: 12px; }
-    a { color: #38bdf8; text-decoration: none; }
-    a:hover { text-decoration: underline; }
-    ul { list-style: none; padding: 0; }
-    li { padding: 16px 0; border-bottom: 1px solid #1e293b; display: flex; justify-content: space-between; align-items: center; }
-    .links { display: flex; gap: 12px; font-size: 0.9rem; }
+    :root {
+      color-scheme: dark;
+      --bg: #090a0f;
+      --panel: #11131a;
+      --panel-hover: #171a24;
+      --border: #1e2230;
+      --border-subtle: #161924;
+      --text: #e2e8f0;
+      --strong: #f8fafc;
+      --muted: #8a94a6;
+      --faint: #475569;
+      --mono: ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", Menlo, Consolas, monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html {
+      -webkit-text-size-adjust: 100%;
+      background: var(--bg);
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--mono);
+      font-size: 0.875rem;
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+      padding-block: clamp(2rem, 5vh, 4.5rem);
+      padding-inline: 1rem;
+    }
+
+    .wrap {
+      width: min(100% - 1rem, 46rem);
+      margin-inline: auto;
+    }
+
+    /* ---- Header & Path ---- */
+
+    header {
+      margin-bottom: 2.25rem;
+      padding-bottom: 1.5rem;
+      border-bottom: 1px dashed var(--border);
+    }
+
+    .path-line {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.5rem;
+      color: var(--faint);
+      font-size: 0.9rem;
+      margin-bottom: 0.75rem;
+    }
+
+    .path-line .prompt {
+      color: var(--muted);
+      user-select: none;
+    }
+
+    .path-line a {
+      color: var(--muted);
+      text-decoration: none;
+    }
+
+    .path-line a:hover {
+      color: var(--strong);
+      text-decoration: underline;
+    }
+
+    h1 {
+      font-size: clamp(1.4rem, 4vw, 1.8rem);
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      color: var(--strong);
+      margin-bottom: 0.5rem;
+    }
+
+    h1 .slash {
+      color: var(--faint);
+      font-weight: 400;
+    }
+
+    .tagline {
+      color: var(--muted);
+      font-size: 1.1rem;
+      /*max-width: 38ch;*/
+      line-height: 1.5;
+    }
+
+    /* ---- Directory Table ---- */
+
+    .file-list {
+      list-style: none;
+      margin-bottom: 3rem;
+    }
+
+    .file-row {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 1rem 1.5rem;
+      padding-block: 1.125rem;
+      border-bottom: 1px solid var(--border-subtle);
+      transition: background 0.12s ease;
+    }
+
+    .file-row:hover {
+      background: linear-gradient(90deg, var(--panel) 0%, transparent 100%);
+    }
+
+    .file-info {
+      flex: 1 1 20rem;
+      min-width: 0;
+    }
+
+    .file-meta {
+      display: flex;
+      align-items: center;
+      gap: 0.625rem;
+      margin-bottom: 0.35rem;
+    }
+
+    .file-name {
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: var(--strong);
+      text-decoration: none;
+    }
+
+    .file-name:hover {
+      text-decoration: underline;
+      text-underline-offset: 3px;
+    }
+
+    .file-desc {
+      color: var(--muted);
+      font-size: 1rem;
+      margin-bottom: 0.4rem;
+      line-height: 1.5;
+    }
+
+    .file-actions {
+      flex: 0 0 auto;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding-top: 0.125rem;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      padding: 0.25rem 0.625rem;
+      font-family: var(--mono);
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-decoration: none;
+      border-radius: 3px;
+      transition: all 0.12s ease;
+    }
+
+    .btn-live {
+      background: var(--strong);
+      color: var(--bg);
+      border: 1px solid var(--strong);
+    }
+
+    .btn-live:hover {
+      background: transparent;
+      color: var(--strong);
+    }
+
+    .btn-source {
+      background: transparent;
+      color: var(--muted);
+      border: 1px solid var(--border);
+    }
+
+    .btn-source:hover {
+      color: var(--strong);
+      border-color: var(--muted);
+    }
+
+    /* ---- Footer ---- */
+
+    footer {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      gap: 0.75rem;
+      padding-top: 1.25rem;
+      border-top: 1px dashed var(--border);
+      color: var(--faint);
+      font-size: 0.75rem;
+    }
+
+    footer a {
+      color: var(--faint);
+      text-decoration: none;
+    }
+
+    footer a:hover {
+      color: var(--muted);
+    }
+
+    /* Accessibility Focus */
+    a:focus-visible {
+      outline: 2px solid var(--strong);
+      outline-offset: 2px;
+    }
   </style>
 </head>
 <body>
-  <h1>vibe-overflows</h1>
-  <ul>
-    <li>
-      <div><strong>Markdown Webbook</strong></div>
-      <div class="links">
-        <a href="./overflows/markdown-webbook/dist/markdown_webbook.html">Live App</a>
-        <a href="https://github.com/elasto-c/vibe-overflows/tree/main/overflows/markdown-webbook">Source</a>
+  <div class="wrap">
+
+    <header>
+      <div class="path-line">
+        <span class="prompt">$</span>
+        <a href="https://github.com/elasto-c">~/elasto-c</a><span>/</span><a href="https://github.com/elasto-c/vibe-overflows">vibe-overflows</a>
       </div>
-    </li>
-  </ul>
+      <h1>vibe-overflows<span class="slash"></span></h1>
+      <p class="tagline">Apps, tools, and artifacts created in chat sessions that overflowed into code.</p>
+    </header>
+
+    <main>
+
+      <ul class="file-list">
+        <li class="file-row">
+          <div class="file-info">
+            <div class="file-meta">
+              <a href="https://github.com/elasto-c/vibe-overflows/tree/main/overflows/markdown-webbook" class="file-name">overflows/markdown-webbook/</a>
+            </div>
+            <p class="file-desc">Single-file Markdown reader and publisher — Markdown in, one self-contained HTML file out.</p>
+          </div>
+          <div class="file-actions">
+            <a href="./overflows/markdown-webbook/dist/markdown_webbook.html" class="btn btn-live">live ↗</a>
+            <a href="https://github.com/elasto-c/vibe-overflows/tree/main/overflows/markdown-webbook" class="btn btn-source">source</a>
+          </div>
+        </li>
+      </ul>
+    </main>
+
+    <footer>
+      <!--<a href="https://github.com/elasto-c/vibe-overflows">github.com/elasto-c/vibe-overflows</a>-->
+    </footer>
+
+  </div>
 </body>
 </html>
