@@ -207,6 +207,17 @@ npm install         # jsdom — dev-only, not needed for the build itself
 npm run verify      # node tools/verify_refactor.js
 ```
 
+The verification stack has a Node floor: jsdom 30 ships undici 8, whose
+engines field declares `^22.22.2 || ^24.15.0 || >=26.0.0`. Outside that range
+`require("jsdom")` already crashes at load, deep inside undici
+(`TypeError: webidl.util.markAsUncloneable is not a function`) — npm only
+warns (EBADENGINE) at install time, so the mismatch would otherwise surface
+as that opaque error before a single check runs. The harness therefore gates
+on the engine range before touching jsdom and exits with an actionable
+message, and CI (`.github/workflows/ci.yml`) pins `node-version: 24`.
+Assembling the artifact itself (`node build.js`) still needs nothing beyond
+Node ≥ 16.
+
 This executes the built file inside jsdom (real marked, real DOMPurify, real
 app pipeline) and runs **182 checks**: the 44-construct Markdown corpus
 (parser correctness, sanitisation policy, embed containment), integration

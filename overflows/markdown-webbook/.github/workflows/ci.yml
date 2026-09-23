@@ -14,7 +14,11 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          # The verification stack (jsdom 30 + undici 8) declares engines
+          # "^22.22.2 || ^24.15.0 || >=26.0.0"; on Node 20 `require("jsdom")`
+          # crashes inside undici ("webidl.util.markAsUncloneable is not a
+          # function"). Node 24 is the line the harness is developed on.
+          node-version: 24
 
       - name: Install verification dependencies (jsdom)
         run: npm install

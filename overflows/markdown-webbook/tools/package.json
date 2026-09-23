@@ -4,6 +4,9 @@
   "private": true,
   "description": "Verification tooling for the Markdown Webbook artifact (../markdown_webbook.html)",
   "type": "commonjs",
+  "engines": {
+    "node": "^22.22.2 || ^24.15.0 || >=26.0.0"
+  },
   "scripts": {
     "verify": "node verify_refactor.js"
   },

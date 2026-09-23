@@ -7,6 +7,36 @@
  */
 const fs = require("fs");
 const path = require("path");
+
+/* ---- Node gate: fail fast, before require("jsdom") detonates ----------------
+ * The verification stack (jsdom 30 + undici 8, see package-lock.json) declares
+ * engines "^22.22.2 || ^24.15.0 || >=26.0.0". Outside that range the require of
+ * jsdom itself crashes at module load deep inside undici ("TypeError:
+ * webidl.util.markAsUncloneable is not a function" — undici's CacheStorage
+ * calls worker_threads.markAsUncloneable, an API from the Node >= 22.10/23
+ * era). npm only WARNS (EBADENGINE) at install time, so the mismatch would
+ * otherwise surface as that opaque TypeError before a single check runs.
+ * Refuse early, with the fix spelled out.
+ */
+(function nodeGate() {
+  const [maj, min, pat] = process.versions.node.split(".").map(Number);
+  const ok =
+    maj >= 26 ||                                        // >=26.0.0
+    (maj === 24 && min >= 15) ||                        // ^24.15.0
+    (maj === 22 && (min > 22 || (min === 22 && pat >= 2))); // ^22.22.2
+  if (!ok) {
+    console.error(
+      `[markdown-webbook verify] Node ${process.versions.node} is outside the ` +
+      `verification stack's engine range (^22.22.2 || ^24.15.0 || >=26.0.0 — ` +
+      `jsdom 30 + undici 8; on older Node the require of jsdom crashes inside ` +
+      `undici with "webidl.util.markAsUncloneable is not a function"). ` +
+      `CI pins node-version: 24 in .github/workflows/ci.yml — run the verify ` +
+      `suite on Node >= 24 (or >= 22.22.2).`
+    );
+    process.exit(1);
+  }
+})();
+
 const { JSDOM, VirtualConsole } = require("jsdom");
 
 /* Portable: verify the artifact assembled into dist/ one level above. */
