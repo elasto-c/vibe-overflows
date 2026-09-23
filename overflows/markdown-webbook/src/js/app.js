@@ -19,7 +19,7 @@
 (function () {
     "use strict";
 
-    var APP_VERSION = "1.8.2";
+    var APP_VERSION = "1.8.3";
     var LS_PREFIX = "mdwb:";
     var MOBILE_QUERY = "(max-width: 720px)";
     var HEAVY_DOC_CHARS = 200 * 1024; /* show a loading state above this */
@@ -2852,18 +2852,25 @@
                forms and linked badges, plus raw HTML img/video/audio/
                picture/source/track) are stripped from the source, so the
                document reads and exports as pure local text.
-         on  — every *image* url is fetched once, type-checked against the
-               standard image formats (1.8.2), with a magic-byte sniff
-               when the server is unhelpful, and rewritten into a base64
-               data uri, so the images live inside the document and
-               survive every export path.
+         on  — every *image* url is fetched once, its image format
+               identified by file extension first (1.8.3), then by
+               content type with a magic-byte sniff when the server is
+               unhelpful (1.8.2), and rewritten into a base64 data uri,
+               so the images live inside the document and survive every
+               export path.
 
-       Media-ness is decided by STRUCTURE (the construct the url appears
-       in), never by file extension. Fenced code blocks and inline code
-       spans are masked out first, so documented examples survive both
-       passes untouched. Failures are per-image: a url that cannot be
-       fetched or is not an image keeps its original form, and the pass
-       never rejects — a broken image must never break an import. */
+       Which urls count as media is decided by STRUCTURE (the construct
+       the url appears in), never by extension. Once a url IS media, its
+       image FORMAT is identified by extension FIRST — a recognised
+       .png/.svg/… ending names the type outright, because servers
+       mislabel images (svg served as "text/xml" is endemic) far more
+       often than a real file lies about its name — and only an
+       unrecognised extension falls through to the header + magic-byte
+       proof. Fenced code blocks and inline code spans are masked out
+       first, so documented examples survive both passes untouched.
+       Failures are per-image: a url that cannot be fetched or is not
+       an image keeps its original form, and the pass never rejects — a
+       broken image must never break an import. */
 
     var MediaTools = {
         /* Refuse to inline absurd payloads; oversized images keep their url. */
@@ -2888,6 +2895,27 @@
             "image/vnd.microsoft.icon": "image/x-icon",
             "image/avif": "image/avif",
             "image/avif-sequence": "image/avif",
+        },
+
+        /* Extension identification is the FIRST resort (1.8.3): a url
+           whose last path segment ends in one of these extensions is
+           that format outright, whatever the response header claims —
+           svg shipped as "text/xml"/"application/xml" is endemic, and
+           the header-first check stranded such images as remote urls.
+           The mapping mirrors EMBED_MIMES' canonical targets. Query
+           strings and fragments are ignored; matching is
+           case-insensitive. An unrecognised (or missing) extension
+           falls through to the header + magic-byte proof below. */
+        EXT_MIMES: {
+            png: "image/png",
+            jpg: "image/jpeg",
+            jpeg: "image/jpeg",
+            gif: "image/gif",
+            webp: "image/webp",
+            svg: "image/svg+xml",
+            bmp: "image/bmp",
+            ico: "image/x-icon",
+            avif: "image/avif",
         },
 
         enabled: false,
@@ -3256,7 +3284,8 @@
                         if (!buf || buf.byteLength > MediaTools.EMBED_MAX_BYTES)
                             return null;
                         var bytes = new Uint8Array(buf);
-                        var mime = MediaTools.resolveMime(ct, bytes);
+                        var mime = MediaTools.extMime(url) ||
+                            MediaTools.resolveMime(ct, bytes);
                         if (!mime) return null;
                         return (
                             "data:" + mime + ";base64," +
@@ -3269,12 +3298,28 @@
                 });
         },
 
-        /* Content-type first, against the standard-format allowlist; when
-           it is missing or generic (octet-stream and friends), sniff the
+        /* First resort of the format identification (1.8.3): read the
+           url's file extension — the last path segment's final dot,
+           ignoring any query string or fragment, case-insensitively —
+           and map it through EXT_MIMES. A missing or unrecognised
+           extension answers null so resolveMime takes over. */
+        extMime: function (url) {
+            var path = String(url == null ? "" : url).split(/[?#]/, 1)[0];
+            var seg = path.slice(path.lastIndexOf("/") + 1);
+            var dot = seg.lastIndexOf(".");
+            if (dot === -1) return null;
+            return MediaTools.EXT_MIMES[seg.slice(dot + 1).toLowerCase()] ||
+                null;
+        },
+
+        /* The FALLBACK identification means (1.8.3): reached when the
+           url's extension is missing or unrecognised. Content-type
+           first, against the standard-format allowlist; when it is
+           missing or generic (octet-stream and friends), sniff the
            magic bytes. A server that answers "text/html" — or anything
            else that is not on the list — is not an encodable image, no
-           matter what the bytes show. The returned mime is the canonical
-           type the data uri carries. */
+           matter what the bytes show. The returned mime is the
+           canonical type the data uri carries. */
         resolveMime: function (ct, bytes) {
             ct = String(ct || "").split(";")[0].trim().toLowerCase();
             if (ct && MediaTools.EMBED_MIMES[ct])
@@ -4831,8 +4876,17 @@
             embed: function (md) {
                 return MediaTools.embedImages(md);
             },
+            /* Harness hook (1.8.3): the extension-first format map —
+               the first resort of the identification chain. */
+            extMime: function (u) {
+                try {
+                    return MediaTools.extMime(u);
+                } catch (e) {
+                    return null;
+                }
+            },
             /* Harness hook (1.8.2): the content-type allowlist + magic-byte
-               sniffer that decides what may become a data uri. */
+               sniffer — the fallback means of the chain. */
             resolveMime: function (ct, bytes) {
                 try {
                     return MediaTools.resolveMime(ct, new Uint8Array(bytes));

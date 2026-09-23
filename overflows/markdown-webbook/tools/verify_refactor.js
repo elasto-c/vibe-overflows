@@ -1545,14 +1545,19 @@ setTimeout(() => {
     ].join("\n");
     const out = await Wl.media.prepare(src);
     const uris = out.match(/data:image\/png;base64,/g) || [];
-    const okEmbed = uris.length === 3 &&
+    /* 1.8.3: a recognised .png ending embeds outright — even the junk
+       payload served as text/html (nope.png) — while the network-failed
+       url keeps its original form (fail.png). */
+    const okEmbed = uris.length === 4 &&
       out.indexOf("![a](data:image/png;base64,") !== -1 &&
       out.indexOf("[p2]: data:image/png;base64,") !== -1 &&
       out.indexOf("\"T\"") !== -1 &&
       out.indexOf('src="data:image/png;base64,') !== -1 &&
       out.indexOf("![bad](https://img/fail.png)") !== -1 &&
-      out.indexOf("![bin](https://img/nope.png)") !== -1;
-    /* A generic content-type falls back to magic-byte sniffing. */
+      out.indexOf("![bin](data:image/png;base64,") !== -1;
+    /* A generic content-type no longer blocks a recognised extension
+       (four.png embeds via the extension map; the extensionless sniff
+       fallback is pinned by N13). */
     window.fetch = () => Promise.resolve(resp(png, "application/octet-stream"));
     const out2 = await Wl.media.prepare("![s](https://img/four.png)");
     const sniffed = out2.indexOf("![s](data:image/png;base64,") === 0;
@@ -1732,6 +1737,92 @@ setTimeout(() => {
     return svgOk && avifOk
       ? ok(out.slice(0, 60))
       : bad("svg=" + svgOk + " avif=" + avifOk + " out=" + out.slice(0, 120));
+  });
+
+  /* ---------------- v1.8.3: extension-first identification ---------------- */
+
+  check("N11", "extension-first identification: standard endings map outright", () => {
+    const em = W.media.extMime;
+    const canon = [
+      ["https://x/pic.png", "image/png"],
+      ["https://x/pic.jpg", "image/jpeg"],
+      ["https://x/pic.jpeg", "image/jpeg"],
+      ["https://x/pic.gif", "image/gif"],
+      ["https://x/pic.webp", "image/webp"],
+      ["https://x/pic.svg", "image/svg+xml"],
+      ["https://x/pic.bmp", "image/bmp"],
+      ["https://x/pic.ico", "image/x-icon"],
+      ["https://x/pic.avif", "image/avif"],
+    ].every(([u, want]) => em(u) === want);
+    const cased = em("https://x/LOGO.SVG") === "image/svg+xml" &&
+      em("HTTPS://X/PIC.PNG") === "image/png";
+    const query = em("https://x/pic.svg?v=3&dl=1#frag") === "image/svg+xml";
+    const multidot = em("https://x/a.b/photo.min.png") === "image/png";
+    const unknown = em("https://x/pic.tiff") === null &&
+      em("https://x/pic.svgz") === null &&
+      em("https://x/picture") === null &&
+      em("https://x/dir.ext/pic") === null &&
+      em("https://x/pic.svg.") === null;
+    return canon && cased && query && multidot && unknown
+      ? ok("svg->svg+xml, ico->x-icon, jpg==jpeg")
+      : bad("canon=" + canon + " cased=" + cased + " query=" + query +
+            " multi=" + multidot + " unknown=" + unknown);
+  });
+  checkA("N12", "recognised extension embeds whatever the header claims", async (Wl) => {
+    Wl.media.setEnabled(true);
+    const prevFetch = window.fetch;
+    const svgStr = '<svg xmlns="http://www.w3.org/2000/svg"><rect width="4" height="4"/></svg>';
+    const svgBytes = new Uint8Array(
+      Array.prototype.map.call(svgStr, (c) => c.charCodeAt(0)),
+    );
+    const resp = (buf, ct) => ({
+      ok: true, status: 200, statusText: "OK",
+      headers: { get: (k) => (/content-type/i.test(k) ? ct : null) },
+      arrayBuffer: () => Promise.resolve(buf),
+    });
+    /* The 1.8.2 bug: a .svg url answered as text/xml was stranded as a
+       remote url. Extension-first embeds it; a foreign text/html header
+       is likewise overridden by the recognised ending. */
+    window.fetch = (u) => /figure\.svg/.test(u)
+      ? Promise.resolve(resp(svgBytes, "text/xml"))
+      : Promise.resolve(resp(svgBytes, "text/html"));
+    const out = await Wl.media.prepare(
+      "![s](https://img/figure.svg) and ![h](https://img/cover.svg)",
+    );
+    const xmlOk = out.indexOf("![s](data:image/svg+xml;base64,") === 0;
+    const htmlOk = out.indexOf("![h](data:image/svg+xml;base64,") !== -1;
+    Wl.media.setEnabled(false);
+    window.fetch = prevFetch;
+    return xmlOk && htmlOk
+      ? ok("text/xml + text/html both embedded via .svg")
+      : bad("xml=" + xmlOk + " html=" + htmlOk + " out=" + out.slice(0, 120));
+  });
+  checkA("N13", "unrecognised extension still falls back to header + sniff", async (Wl) => {
+    Wl.media.setEnabled(true);
+    const prevFetch = window.fetch;
+    const svgStr = '<svg xmlns="http://www.w3.org/2000/svg"><rect width="4" height="4"/></svg>';
+    const svgBytes = new Uint8Array(
+      Array.prototype.map.call(svgStr, (c) => c.charCodeAt(0)),
+    );
+    const resp = (buf, ct) => ({
+      ok: true, status: 200, statusText: "OK",
+      headers: { get: (k) => (/content-type/i.test(k) ? ct : null) },
+      arrayBuffer: () => Promise.resolve(buf),
+    });
+    window.fetch = (u) => /rawbin/.test(u)
+      ? Promise.resolve(resp(svgBytes, "application/octet-stream"))
+      : Promise.resolve(resp(svgBytes, "text/html"));
+    const out = await Wl.media.prepare(
+      "![r](https://img/rawbin) and ![n](https://img/note)",
+    );
+    const sniffOk = out.indexOf("![r](data:image/svg+xml;base64,") === 0;
+    const foreignKept = out.indexOf("![n](https://img/note)") !== -1 &&
+      out.indexOf("![n](data:") === -1;
+    Wl.media.setEnabled(false);
+    window.fetch = prevFetch;
+    return sniffOk && foreignKept
+      ? ok("sniff embedded rawbin; text/html note kept its url")
+      : bad("sniff=" + sniffOk + " kept=" + foreignKept + " out=" + out.slice(0, 120));
   });
   checkA("N04", "keyboard shortcut pastes the clipboard with success toast", async (Wl) => {
     Wl.openMarkdown("# Seed\n\nbefore shortcut");
@@ -2160,6 +2251,7 @@ setTimeout(() => {
   console.log("v1.8.0 additions: Open-from-url import (meta-panel modal, loading state, http(s)+extension validation, HTML/binary guards, toasts on failure only, always excluded from publications), .mdx imports with preserved download naming + dynamic Download label, toc/findbar mutual exclusion, btn-top below the toc drawer, welcome-paste removal");
   console.log("v1.8.1 additions: Paste from clipboard (doc-menu item, text/type inspection with error toasts, success toast via render) and the Fetch & embed remote media switch (default off; off strips media constructs at import, on rewrites image urls to sanitiser-allowed data uris), both load-path wired (file/url/clipboard/drag) and excluded from publications; Edit HTML metadata regrouped under Print / save as PDF");
   console.log("v1.8.2 additions: embed allowlist widened to the standard image formats (png/jpg/jpeg/gif/webp/svg+xml/bmp/ico/avif with canonical aliases + svg/avif magic-byte sniffs), Paste-from-clipboard keyboard shortcut (Ctrl/Cmd+Shift+V, toasts, help-panel row, dropped from publications), and exact-capture metadata save (empty field clears the entry, cleared title reads Untitled, captured title applied to toolbar/footer/tab/placeholder/downloads/exports)");
+  console.log("v1.8.3 additions: image format identification is extension-first (a recognised png/jpg/jpeg/gif/webp/svg/bmp/ico/avif ending names the canonical type outright — svg served as text/xml now embeds) with the content-type allowlist + magic-byte sniff kept as the fallback for unrecognised or missing extensions");
   process.exit(fail + crash > 0 ? 1 : 0);
   }
 }, 150);

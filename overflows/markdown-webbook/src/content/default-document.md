@@ -40,10 +40,12 @@ exports — as pure local text. **On** downloads every image the moment the
 document is imported and rewrites it as data embedded in the file itself,
 so the images survive every export path: Download .md, both HTML exports
 and print. The standard image formats are encoded — png, jpg/jpeg, gif,
-webp, svg, bmp, ico and avif — recognised by content type with a
-magic-byte fallback for unhelpfully-served files, never by file
-extension. Either way the decision is made at import time and the choice
-is remembered on this device.
+webp, svg, bmp, ico and avif — identified by file extension first (a
+recognised ending names the type outright, so a `.svg` served as
+`text/xml` still embeds), with content-type plus magic-byte sniffing as
+the fallback for unrecognised or missing extensions. Either way the
+decision is made at import time and the choice is remembered on this
+device.
 
 ## What the reader supports
 

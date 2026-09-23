@@ -27,7 +27,7 @@ jobs:
           git diff --exit-code --stat -- dist/ \
             || (echo "::error::dist/markdown_webbook.html does not match the sources — run 'node build.js' and commit the result" && exit 1)
 
-      - name: Verify (175-check jsdom suite)
+      - name: Verify (178-check jsdom suite)
         run: npm run verify
 
       - name: Upload the built artifact
