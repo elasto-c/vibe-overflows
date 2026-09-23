@@ -2116,9 +2116,12 @@
                 color: #fff;
             }
 
-            /* --- Image lightbox (M5 Proposal A; layout reworked 1.8.6):
-               the document's own image at full size, over a calm dark
-               scrim. Clicks, the close button and Esc all dismiss; linked
+            /* --- Image lightbox (M5 Proposal A; layout reworked 1.8.6,
+               flex fill + interactive zoom 1.8.7): the document's own
+               image at full size, over a calm dark scrim. Esc, a click on
+               the backdrop or the close button dismisses it — clicks on
+               the image, its caption or the letterbox surface never do,
+               because that surface is the zoom/pan playground. Linked
                badge images never zoom. */
             .lightbox {
                 position: fixed;
@@ -2144,72 +2147,86 @@
                 border: none;
                 width: 100%;
                 animation: lightbox-in 0.16s ease;
+                /* The modal owns every gesture while it is open (1.8.7):
+                   touch-action: none keeps the browser's own pinch-zoom,
+                   scrolling and rubber-banding out of the viewport, and
+                   text selection is noise on a scrim. */
+                touch-action: none;
+                overscroll-behavior: contain;
+                user-select: none;
+                -webkit-user-select: none;
             }
             @keyframes lightbox-in {
                 from {
                     opacity: 0;
                 }
             }
+            /* Responsive, viewport-filling figure (1.8.7): the figure
+               stacks image and caption vertically and fills the safe
+               area; the image scales fluidly within its remaining bounds
+               without aspect-ratio distortion (object-fit: contain), can
+               always shrink safely (min-height: 0) so the centered
+               caption is never squished or pushed out of view, and the
+               caption element disappears entirely when it has no
+               content. */
             .lightbox-figure {
                 margin: 0;
-                max-width: 100%;
-                min-width: 0;
                 display: flex;
                 flex-direction: column;
-                align-items: center;
-                justify-content: center;
-                animation: lightbox-zoom 0.16s ease;
-            }
-            @keyframes lightbox-zoom {
-                from {
-                    transform: scale(0.965);
-                }
+                width: 100%;
+                height: 100%;
+                min-width: 0;
+                min-height: 0;
+                box-sizing: border-box;
             }
             .lightbox-figure img {
                 display: block;
-                /* Occupy the maximum available space across whichever
-                   dimension constrains (width or height) while the
-                   intrinsic aspect ratio stays strictly preserved:
-                   object-fit: contain keeps the painted image complete
-                   inside the flexible box — no crop, no stretch. */
-                max-width: calc(
-                    100vw -
-                        (
-                            var(--space-5) + env(safe-area-inset-left)
-                        ) -
-                        (
-                            var(--space-5) + env(safe-area-inset-right)
-                        )
-                );
-                max-height: calc(
-                    100vh -
-                        (
-                            var(--space-5) + var(--control-size) +
-                                env(safe-area-inset-top)
-                        ) -
-                        (var(--space-5) + env(safe-area-inset-bottom)) -
-                        /* caption reserve: margin-top + two caption lines */
-                        (var(--space-3) + 2.6em)
-                );
-                width: auto;
-                height: auto;
-                object-fit: contain;
                 border-radius: var(--radius-md);
                 box-shadow: var(--shadow-2);
+                flex-grow: 1;
+                min-height: 0;
+                max-width: 100%;
+                object-fit: contain;
                 /* Never inherit the dark theme's image dimming */
                 filter: none !important;
+                /* Zoom engine (1.8.7): the transform is the ONLY property
+                   gestures write, so zooming and panning stay on the
+                   compositor and never trigger layout or paint. */
+                will-change: transform;
+                cursor: zoom-in;
+            }
+            .lightbox[data-zoom="in"] .lightbox-figure img {
+                cursor: grab;
+            }
+            .lightbox.is-panning .lightbox-figure img {
+                cursor: grabbing;
+            }
+            /* Returning to 1x snaps the matrix home with a short eased
+               transition; the class exists only for that snap, so live
+               gestures never pay for a transition. */
+            .lightbox.is-settling .lightbox-figure img {
+                transition: transform 180ms ease;
             }
             .lightbox-figure figcaption {
                 flex-shrink: 0;
-                margin-top: var(--space-3);
+                padding: 1rem 0;
+                text-align: center;
+                overflow-wrap: anywhere;
                 font-size: 0.85rem;
                 color: rgba(255, 255, 255, 0.72);
-                text-align: center;
                 max-width: 78ch;
-                overflow-wrap: anywhere;
+                margin: 0 auto;
+            }
+            .lightbox-figure figcaption:empty {
+                display: none;
             }
             .lightbox-btn {
                 position: absolute;
+                /* The zoomed image transforms into its own stacking
+                   context and paints after this button in tree order —
+                   the explicit level keeps the control above the image
+                   at every zoom level. */
+                z-index: 1;
                 top: calc(var(--space-4) + env(safe-area-inset-top));
                 right: calc(var(--space-4) + env(safe-area-inset-right));
                 width: var(--control-size);
@@ -3090,9 +3107,15 @@ git log --oneline | head -5
 
 ### Images
 
-Click any image to view it at full size in a calm overlay — `Esc`, a click,
-or the close button returns you exactly where you were. Linked badge images
-are left alone so their links keep working.
+Click any image to view it at full size in a calm overlay. Once open, zoom
+right in: the mouse wheel and a trackpad pinch (two fingers + <kbd>Ctrl</kbd>)
+scale the image smoothly around your cursor, a two-finger pinch pans on a
+touchscreen, and dragging moves it when zoomed — scaling stays between 1×
+and 5×, the image can never be panned off-screen, and dropping back to 1×
+glides home to the center. Press <kbd>Esc</kbd>, click the close button, or
+click the backdrop around the image to return exactly where you were (clicks
+on the image itself never dismiss it). Linked badge images are left alone so
+their links keep working.
 
 ## Navigating long documents
 
@@ -3289,7 +3312,8 @@ if(__exports != exports)module.exports = exports;return module.exports}));
  *   (compact tokenizer, R18), Enhancer (incl. live task checkboxes),
  *   Storage, Settings (reader prefs incl. header accent), Source/Exporter
  *   (import, lifecycle, export suite), Nav (TOC, scrollspy, progress),
- *   Find (search layer), Palette (R17), Help (R19), Lightbox (M5A),
+ *   Find (search layer), Palette (R17), Help (R19), Lightbox (M5A;
+ *   1.8.7 adds the composited zoom/pan engine),
  *   Meta, OpenUrl (1.8.0), MediaTools (1.8.1), UI, App.
  * Security model: imported Markdown is untrusted input; all rendered HTML is
  * sanitised and URL schemes are allow-listed before reaching the DOM. The
@@ -3302,7 +3326,7 @@ if(__exports != exports)module.exports = exports;return module.exports}));
 (function () {
     "use strict";
 
-    var APP_VERSION = "1.8.6";
+    var APP_VERSION = "1.8.7";
     var LS_PREFIX = "mdwb:";
     var MOBILE_QUERY = "(max-width: 720px)";
     var HEAVY_DOC_CHARS = 200 * 1024; /* show a loading state above this */
@@ -6068,22 +6092,128 @@ if(__exports != exports)module.exports = exports;return module.exports}));
         },
     };
 
-    /* ==================== Image lightbox (M5, Proposal A) ==================
-       Click any content image to read it at full size; Esc, a click or the
-       close button dismisses it. Images inside links (badges) never zoom —
+    /* ==================== Image lightbox (M5, Proposal A; zoom 1.8.7) ====
+       Click any content image to read it at full size. Esc, a click on
+       the backdrop and the close button dismiss it; clicks on the image,
+       its caption or the letterbox surface never do — that surface is
+       the zoom/pan playground. Images inside links (badges) never zoom —
        the link wins. The overlay re-uses the image URL that is already
-       rendered, so it works offline on file:// with zero new fetches. */
+       rendered, so it works offline on file:// with zero new fetches.
+
+       Zoom/pan engine (1.8.7, zero-dependency): every gesture mutates
+       exactly two numbers — scale (1x..5x) and the (tx, ty) offset — and
+       one composited declaration, `transform: translate3d(..) scale(..)`,
+       is written once per animation frame, so zooming and panning run on
+       the compositor and never trigger layout or paint.
+
+         - Mobile pinch: PointerEvents track both contacts; the distance
+           ratio maps to scale and the midpoint delta pans, with the
+           anchor following the midpoint. `touch-action: none` on the
+           modal keeps the browser's own zoom/scroll/rubber-band out of
+           the viewport while the lightbox is open.
+         - Mouse wheel: damped exponential steps (one notch ≈ x1.22),
+           anchored at the cursor's exact position — never the viewport
+           centre.
+         - Trackpad pinch: browsers encode it as a wheel event with
+           ctrlKey === true and small high-frequency deltas; it is
+           normalised with a stronger exponential damping curve so a
+           physical pinch feels continuous instead of stepped.
+         - Boundaries: scale clamps to [1x, 5x]; pan is clamped so at
+           least a 40px band of the scaled image always stays inside the
+           viewport; landing back on 1x resets the matrix to the default
+           centered transform (animated, via the is-settling class). */
 
     var Lightbox = {
         open: false,
         opener: null,
 
+        MIN_SCALE: 1,
+        MAX_SCALE: 5,
+        /* Pan clamp: minimum visible band (px) of the scaled image. */
+        PAN_MARGIN: 40,
+
+        scale: 1,
+        tx: 0,
+        ty: 0,
+        /* base — geometry of the UNtransformed image element. The flex
+           layout fixes the element box for the whole overlay session, so
+           one snapshot (captured on open, image load and resize) serves
+           every gesture; no gesture math ever reads layout. */
+        base: { cx: 0, cy: 0, w: 0, h: 0 },
+
+        pointers: new Map(),
+        gesture: null, /* {mode:"pan",px,py} | {mode:"pinch",d,mx,my} */
+        gestureMoved: false,
+        suppressClick: false,
+        framePending: false,
+        settleTimer: null,
+
         init: function () {
             Lightbox.el = $("lightbox");
             Lightbox.img = $("lightbox-img");
             Lightbox.cap = $("lightbox-cap");
-            Lightbox.el.addEventListener("click", function () {
-                Lightbox.close();
+            var el = Lightbox.el;
+            /* Dismissal surface: ONLY the backdrop around the figure (the
+               safe-area band outside it) and the close button. Clicks on
+               the figure — image, caption, letterbox — bubble with those
+               elements as target and are ignored here. A drag that ends
+               outside the image fires its trailing click on the common
+               ancestor of the down/up targets — this element — and would
+               dismiss mid-gesture, so gesture-ending clicks are
+               swallowed once (suppressClick). */
+            el.addEventListener("click", function (e) {
+                if (Lightbox.suppressClick) {
+                    Lightbox.suppressClick = false;
+                    return;
+                }
+                if (e.target === el) { Lightbox.close(); }
+            });
+            var btn = $("lightbox-close");
+            if (btn)
+                btn.addEventListener("click", function () {
+                    Lightbox.close();
+                });
+            el.addEventListener("pointerdown", function (e) {
+                Lightbox.onPointerDown(e);
+            });
+            window.addEventListener(
+                "pointermove",
+                function (e) {
+                    Lightbox.onPointerMove(e);
+                },
+                { passive: false },
+            );
+            window.addEventListener("pointerup", function (e) {
+                Lightbox.onPointerUp(e);
+            });
+            window.addEventListener("pointercancel", function (e) {
+                Lightbox.onPointerUp(e);
+            });
+            /* passive: false — the modal must be able to claim every
+               wheel gesture (page scroll, browser pinch-zoom). */
+            el.addEventListener(
+                "wheel",
+                function (e) {
+                    Lightbox.onWheel(e);
+                },
+                { passive: false },
+            );
+            /* The zoom surface is gesture-only; native image dragging
+               (ghost image while panning) would fight the pan. */
+            el.addEventListener("dragstart", function (e) {
+                e.preventDefault();
+            });
+            Lightbox.img.addEventListener("load", function () {
+                if (!Lightbox.open) return;
+                Lightbox.captureBase();
+                Lightbox.clampPan();
+                Lightbox.scheduleApply();
+            });
+            window.addEventListener("resize", function () {
+                if (!Lightbox.open) return;
+                Lightbox.captureBase();
+                Lightbox.clampPan();
+                Lightbox.scheduleApply();
             });
         },
 
@@ -6099,7 +6229,11 @@ if(__exports != exports)module.exports = exports;return module.exports}));
                 Lightbox.cap.textContent = "";
                 Lightbox.cap.hidden = true;
             }
+            Lightbox.resetTransform();
             Lightbox.el.hidden = false;
+            /* Layout is live again once unhidden — snapshot the element
+               box the gestures will work against. */
+            Lightbox.captureBase();
             document.documentElement.setAttribute("data-lightbox", "on");
             Lightbox.open = true;
             var btn = $("lightbox-close");
@@ -6113,6 +6247,7 @@ if(__exports != exports)module.exports = exports;return module.exports}));
             document.documentElement.removeAttribute("data-lightbox");
             /* Drop the src so an in-flight large image stops decoding. */
             Lightbox.img.removeAttribute("src");
+            Lightbox.resetTransform();
             var op = Lightbox.opener;
             Lightbox.opener = null;
             if (op && op.focus) {
@@ -6122,8 +6257,282 @@ if(__exports != exports)module.exports = exports;return module.exports}));
             }
         },
 
+        /* ---- zoom/pan engine ------------------------------------------ */
+
+        resetTransform: function () {
+            Lightbox.scale = 1;
+            Lightbox.tx = 0;
+            Lightbox.ty = 0;
+            Lightbox.pointers.clear();
+            Lightbox.gesture = null;
+            Lightbox.gestureMoved = false;
+            Lightbox.suppressClick = false;
+            Lightbox.framePending = false;
+            if (Lightbox.settleTimer) {
+                clearTimeout(Lightbox.settleTimer);
+                Lightbox.settleTimer = null;
+            }
+            Lightbox.img.style.transform = "";
+            Lightbox.el.removeAttribute("data-zoom");
+            Lightbox.el.classList.remove("is-panning", "is-settling");
+        },
+
+        captureBase: function () {
+            var r = Lightbox.img.getBoundingClientRect();
+            /* The visual rect centre equals the layout centre plus the
+               current translate (scale is applied about the layout
+               centre), so the untransformed geometry survives a live
+               transform — this also holds on resize while zoomed. */
+            Lightbox.base.cx = r.left + r.width / 2 - Lightbox.tx;
+            Lightbox.base.cy = r.top + r.height / 2 - Lightbox.ty;
+            Lightbox.base.w = Lightbox.scale > 0 ? r.width / Lightbox.scale : 0;
+            Lightbox.base.h = Lightbox.scale > 0 ? r.height / Lightbox.scale : 0;
+        },
+
+        applyTransform: function () {
+            Lightbox.img.style.transform =
+                "translate3d(" +
+                Lightbox.tx +
+                "px, " +
+                Lightbox.ty +
+                "px, 0) scale(" +
+                Lightbox.scale +
+                ")";
+            if (Lightbox.scale > 1) Lightbox.el.setAttribute("data-zoom", "in");
+            else Lightbox.el.removeAttribute("data-zoom");
+        },
+
+        scheduleApply: function () {
+            if (Lightbox.framePending) return;
+            Lightbox.framePending = true;
+            (window.requestAnimationFrame || function (fn) { setTimeout(fn, 16); })(
+                function () {
+                    Lightbox.framePending = false;
+                    Lightbox.applyTransform();
+                },
+            );
+        },
+
+        /* Harness hook: run a pending frame synchronously (jsdom has no
+           compositor; the smoke suite drives real frames). */
+        flush: function () {
+            if (!Lightbox.framePending) return;
+            Lightbox.framePending = false;
+            Lightbox.applyTransform();
+        },
+
+        /* Zoom by `factor`, keeping the content point under viewport
+           position (px, py) pinned where the cursor put it:
+             t' = (P - C)(1 - k) + k·t     with k = s'/s
+           (derived from V(p) = C + t + s·(p - C), transform-origin at
+           the element centre). Never snaps to the viewport centre. */
+        zoomAt: function (px, py, factor) {
+            if (!Lightbox.base.w || !Lightbox.base.h) return;
+            var prev = Lightbox.scale;
+            var next = Math.min(
+                Lightbox.MAX_SCALE,
+                Math.max(Lightbox.MIN_SCALE, prev * factor),
+            );
+            if (next === prev) {
+                /* Pinned at a bound — only the pan clamp can still move. */
+                Lightbox.clampPan();
+                Lightbox.scheduleApply();
+                return;
+            }
+            var k = next / prev;
+            Lightbox.tx = (px - Lightbox.base.cx) * (1 - k) + k * Lightbox.tx;
+            Lightbox.ty = (py - Lightbox.base.cy) * (1 - k) + k * Lightbox.ty;
+            Lightbox.scale = next;
+            Lightbox.clampPan();
+            if (Lightbox.scale === Lightbox.MIN_SCALE) {
+                Lightbox.tx = 0;
+                Lightbox.ty = 0;
+                if (Lightbox.pointers.size === 0) Lightbox.settleHome();
+            }
+            Lightbox.scheduleApply();
+        },
+
+        /* Overflow clamp: the scaled image may be panned to any edge but
+           never off the canvas — a PAN_MARGIN band always stays inside
+           the viewport. */
+        clampPan: function () {
+            var m = Lightbox.PAN_MARGIN;
+            var vw = window.innerWidth || Lightbox.el.clientWidth || 1024;
+            var vh = window.innerHeight || Lightbox.el.clientHeight || 768;
+            var hw = (Lightbox.base.w * Lightbox.scale) / 2;
+            var hh = (Lightbox.base.h * Lightbox.scale) / 2;
+            Lightbox.tx = Math.max(
+                m - hw - Lightbox.base.cx,
+                Math.min(vw - m + hw - Lightbox.base.cx, Lightbox.tx),
+            );
+            Lightbox.ty = Math.max(
+                m - hh - Lightbox.base.cy,
+                Math.min(vh - m + hh - Lightbox.base.cy, Lightbox.ty),
+            );
+        },
+
+        settleHome: function () {
+            if (Lightbox.settleTimer) clearTimeout(Lightbox.settleTimer);
+            Lightbox.el.classList.add("is-settling");
+            Lightbox.settleTimer = setTimeout(function () {
+                Lightbox.settleTimer = null;
+                Lightbox.el.classList.remove("is-settling");
+            }, 240);
+        },
+
+        cancelSettle: function () {
+            if (Lightbox.settleTimer) {
+                clearTimeout(Lightbox.settleTimer);
+                Lightbox.settleTimer = null;
+            }
+            Lightbox.el.classList.remove("is-settling");
+        },
+
+        onWheel: function (e) {
+            if (!Lightbox.open) return;
+            e.preventDefault();
+            Lightbox.cancelSettle();
+            var dy = e.deltaY;
+            if (e.deltaMode === 1) dy *= 16; /* lines -> px */
+            else if (e.deltaMode === 2) dy *= 400; /* pages -> px */
+            var factor;
+            if (e.ctrlKey) {
+                /* Trackpad pinch: small, high-frequency deltas — the
+                   exponential map with strong damping keeps the curve
+                   smooth instead of linearly jumping between steps. */
+                if (dy > 120) dy = 120;
+                else if (dy < -120) dy = -120;
+                factor = Math.exp(-dy * 0.01);
+            } else {
+                /* Mouse wheel notches / two-finger scroll. */
+                if (dy > 400) dy = 400;
+                else if (dy < -400) dy = -400;
+                factor = Math.exp(-dy * 0.002);
+            }
+            if (factor < 0.5) factor = 0.5;
+            else if (factor > 2) factor = 2;
+            Lightbox.zoomAt(e.clientX, e.clientY, factor);
+        },
+
+        onPointerDown: function (e) {
+            if (!Lightbox.open) return;
+            /* Gestures live on the image surface only; backdrop, caption
+               and close-button pointers fall through to the click layer
+               untouched (canceling their pointerdown could suppress the
+               very click that dismisses or closes). */
+            if (e.target !== Lightbox.img) return;
+            if (e.pointerType === "mouse" && e.button !== 0) return;
+            /* No selection, no compatibility mouse events, no native
+               drag — and, with touch-action: none, no browser pan/zoom. */
+            e.preventDefault();
+            Lightbox.cancelSettle();
+            Lightbox.gestureMoved = false;
+            Lightbox.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+            if (Lightbox.pointers.size === 1) {
+                /* At 1x there is nothing to pan — the single pointer
+                   waits; a second one turns the gesture into a pinch. */
+                Lightbox.gesture =
+                    Lightbox.scale > 1
+                        ? { mode: "pan", px: e.clientX, py: e.clientY }
+                        : null;
+                if (Lightbox.gesture) Lightbox.el.classList.add("is-panning");
+            } else if (Lightbox.pointers.size === 2) {
+                var pts = Lightbox.points();
+                Lightbox.gesture = {
+                    mode: "pinch",
+                    d: Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y),
+                    mx: (pts[0].x + pts[1].x) / 2,
+                    my: (pts[0].y + pts[1].y) / 2,
+                };
+                Lightbox.el.classList.remove("is-panning");
+            }
+        },
+
+        onPointerMove: function (e) {
+            if (!Lightbox.open || !Lightbox.pointers.has(e.pointerId)) return;
+            e.preventDefault();
+            var p = Lightbox.pointers.get(e.pointerId);
+            p.x = e.clientX;
+            p.y = e.clientY;
+            if (!Lightbox.gesture) return;
+            if (Lightbox.gesture.mode === "pinch" && Lightbox.pointers.size >= 2) {
+                var pts = Lightbox.points();
+                var d = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y);
+                var mx = (pts[0].x + pts[1].x) / 2;
+                var my = (pts[0].y + pts[1].y) / 2;
+                /* Two-finger pan first, then a cursor-anchored zoom on
+                   the distance ratio — the composition of the same two
+                   primitives the desktop gestures use. */
+                Lightbox.tx += mx - Lightbox.gesture.mx;
+                Lightbox.ty += my - Lightbox.gesture.my;
+                Lightbox.gesture.mx = mx;
+                Lightbox.gesture.my = my;
+                Lightbox.gestureMoved = true;
+                if (Lightbox.gesture.d > 0 && d > 0) {
+                    Lightbox.zoomAt(mx, my, d / Lightbox.gesture.d);
+                    Lightbox.gesture.d = d;
+                } else {
+                    Lightbox.clampPan();
+                    Lightbox.scheduleApply();
+                }
+            } else if (
+                Lightbox.gesture.mode === "pan" &&
+                Lightbox.pointers.size === 1
+            ) {
+                Lightbox.tx += e.clientX - Lightbox.gesture.px;
+                Lightbox.ty += e.clientY - Lightbox.gesture.py;
+                Lightbox.gesture.px = e.clientX;
+                Lightbox.gesture.py = e.clientY;
+                Lightbox.gestureMoved = true;
+                Lightbox.clampPan();
+                Lightbox.scheduleApply();
+            }
+        },
+
+        onPointerUp: function (e) {
+            if (!Lightbox.pointers.has(e.pointerId)) return;
+            Lightbox.pointers.delete(e.pointerId);
+            if (Lightbox.pointers.size === 0) {
+                /* A genuine drag/pinch must not end in a click: Chromium
+                   fires the trailing click on the common ancestor of the
+                   down/up targets — the backdrop — which would dismiss
+                   the overlay mid-gesture. Swallow the next click once. */
+                if (Lightbox.gestureMoved) {
+                    Lightbox.gestureMoved = false;
+                    Lightbox.suppressClick = true;
+                    setTimeout(function () {
+                        Lightbox.suppressClick = false;
+                    }, 0);
+                }
+                Lightbox.gesture = null;
+                Lightbox.el.classList.remove("is-panning");
+            } else if (Lightbox.pointers.size === 1) {
+                /* Pinch -> pan handoff: rebase on the surviving pointer. */
+                var p = Lightbox.points()[0];
+                Lightbox.gesture =
+                    Lightbox.scale > 1
+                        ? { mode: "pan", px: p.x, py: p.y }
+                        : null;
+                if (Lightbox.gesture) Lightbox.el.classList.add("is-panning");
+                else Lightbox.el.classList.remove("is-panning");
+            }
+        },
+
+        points: function () {
+            var out = [];
+            Lightbox.pointers.forEach(function (p) {
+                out.push(p);
+            });
+            return out;
+        },
+
         state: function () {
-            return { open: Lightbox.open };
+            return {
+                open: Lightbox.open,
+                scale: Lightbox.scale,
+                x: Math.round(Lightbox.tx * 100) / 100,
+                y: Math.round(Lightbox.ty * 100) / 100,
+            };
         },
     };
 
@@ -7715,6 +8124,16 @@ if(__exports != exports)module.exports = exports;return module.exports}));
             },
             state: function () {
                 return Lightbox.state();
+            },
+            /* Harness hooks (1.8.7): the zoom primitive and a synchronous
+               frame flush, so jsdom checks can drive the gesture maths
+               deterministically without an animation frame. */
+            zoomAt: function (px, py, factor) {
+                Lightbox.zoomAt(px, py, factor);
+                return Lightbox.state();
+            },
+            flush: function () {
+                Lightbox.flush();
             },
         },
         strict: null, /* per-document strict toggle removed (1.5.0) */

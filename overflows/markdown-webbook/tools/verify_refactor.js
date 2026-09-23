@@ -1084,6 +1084,261 @@ setTimeout(() => {
     W.lightbox.close();
     return !opened ? ok() : bad("opened=" + opened);
   });
+
+  /* v1.8.7 — lightbox zoom harness helpers. jsdom does no layout, so the
+     checks pin the lightbox image element to a known box and drive the
+     gesture maths against it (window.innerWidth/innerHeight are 1024/768).
+     Rect: left 120 top 96 w 1040 h 708 -> layout centre (640, 450). */
+  const LB_CX = 640;
+  const LB_CY = 450;
+  const LB_W = 1040;
+  const LB_H = 708;
+  const patchLbRect = () => {
+    const im = doc.getElementById("lightbox-img");
+    im.getBoundingClientRect = () => ({
+      left: 120, top: 96, width: LB_W, height: LB_H,
+      right: 120 + LB_W, bottom: 96 + LB_H, x: 120, y: 96, toJSON: () => {},
+    });
+    return im;
+  };
+  const unpatchLbRect = () => {
+    const im = doc.getElementById("lightbox-img");
+    delete im.getBoundingClientRect;
+  };
+  const openLb = () => {
+    W.openMarkdown("# Zoom lab\n\n![Alt text here](pic.png)");
+    patchLbRect();
+    const src = doc.querySelector("#content img");
+    W.lightbox.openFor(src);
+    return src;
+  };
+  const pointer = (type, id, x, y) => {
+    const Ctor = window.PointerEvent || window.MouseEvent;
+    const ev = new Ctor(type, {
+      bubbles: true, cancelable: true, clientX: x, clientY: y, button: 0,
+    });
+    Object.defineProperty(ev, "pointerId", { value: id });
+    Object.defineProperty(ev, "pointerType", { value: "touch" });
+    return ev;
+  };
+  const lbWheel = (x, y, deltaY, ctrlKey, deltaMode) => {
+    let ev;
+    try {
+      ev = new window.WheelEvent("wheel", {
+        bubbles: true, cancelable: true, clientX: x, clientY: y,
+        deltaY, deltaMode: deltaMode || 0, ctrlKey: !!ctrlKey,
+      });
+    } catch (e) {
+      ev = new window.MouseEvent("wheel", {
+        bubbles: true, cancelable: true, clientX: x, clientY: y,
+      });
+      Object.defineProperty(ev, "deltaY", { value: deltaY });
+      Object.defineProperty(ev, "deltaMode", { value: deltaMode || 0 });
+      Object.defineProperty(ev, "ctrlKey", { value: !!ctrlKey });
+    }
+    return ev;
+  };
+  const approx = (a, b, eps) => Math.abs(a - b) <= (eps == null ? 0.01 : eps);
+
+  check("LX3", "dismissal matrix: backdrop and close button close; image, caption and letterbox never do", () => {
+    W.openMarkdown("# Dismiss\n\n![Caption text](pic.png)");
+    const src = doc.querySelector("#content img");
+    src.click();
+    const lb = doc.getElementById("lightbox");
+    const cap = doc.getElementById("lightbox-cap");
+    const im = lb.querySelector("img");
+    const btn = doc.getElementById("lightbox-close");
+    if (lb.hidden || !W.lightbox.state().open) return bad("did not open");
+    /* backdrop click (target IS the lightbox element) dismisses */
+    lb.dispatchEvent(new window.MouseEvent("click", { bubbles: true, cancelable: true }));
+    if (W.lightbox.state().open || !lb.hidden) return bad("backdrop click did not dismiss");
+    /* reopen — image, caption (letterbox surface included) never dismiss */
+    W.lightbox.openFor(src);
+    im.dispatchEvent(new window.MouseEvent("click", { bubbles: true, cancelable: true }));
+    const staysImage = W.lightbox.state().open && !lb.hidden;
+    cap.dispatchEvent(new window.MouseEvent("click", { bubbles: true, cancelable: true }));
+    const staysCaption = W.lightbox.state().open && !lb.hidden;
+    /* the close button owns its dismissal */
+    btn.click();
+    const closed = !W.lightbox.state().open && lb.hidden;
+    return staysImage && staysCaption && closed
+      ? ok()
+      : bad("img=" + staysImage + " cap=" + staysCaption + " btn=" + closed);
+  });
+  check("LX4", "wheel zoom anchors the content point under the cursor (never the centre)", () => {
+    openLb();
+    const lb = doc.getElementById("lightbox");
+    const im = doc.getElementById("lightbox-img");
+    const P = { x: 800, y: 300 };
+    /* content point under the cursor at 1x, in element-centre coords */
+    const ux = P.x - LB_CX;
+    const uy = P.y - LB_CY;
+    const ev = lbWheel(P.x, P.y, -100, false);
+    lb.dispatchEvent(ev);
+    W.lightbox.flush();
+    const st = W.lightbox.state();
+    const k = Math.exp(0.2); /* exp(-(-100) * 0.002) */
+    /* the content point under the cursor must be unchanged (state rounds
+       x/y to 2dp, so the tolerance is sub-pixel but not exact) */
+    const ux2 = (P.x - LB_CX - st.x) / st.scale;
+    const uy2 = (P.y - LB_CY - st.y) / st.scale;
+    const anchored = approx(ux2, ux) && approx(uy2, uy);
+    const expectedTx = (P.x - LB_CX) * (1 - k);
+    const expectedTy = (P.y - LB_CY) * (1 - k);
+    const matrix = im.style.transform;
+    const wrote = matrix.indexOf("translate3d(") === 0 &&
+      matrix.indexOf("scale(") !== -1 &&
+      lb.getAttribute("data-zoom") === "in";
+    const claimed = ev.defaultPrevented;
+    W.lightbox.close();
+    unpatchLbRect();
+    return anchored && approx(st.scale, k, 1e-9) &&
+      approx(st.x, expectedTx) && approx(st.y, expectedTy) &&
+      wrote && claimed
+      ? ok("k=" + st.scale.toFixed(4) + " t=(" + st.x + ", " + st.y + ")")
+      : bad("anchored=" + anchored + " scale=" + st.scale + " t=(" + st.x + ", " + st.y + ") wrote=" + wrote + " pd=" + claimed);
+  });
+  check("LX5", "wheel clamps at 1x and 5x; landing on 1x resets the matrix home", () => {
+    openLb();
+    const lb = doc.getElementById("lightbox");
+    const im = doc.getElementById("lightbox-img");
+    for (let i = 0; i < 30; i++) lb.dispatchEvent(lbWheel(512, 384, -100, false));
+    W.lightbox.flush();
+    const atMax = W.lightbox.state().scale === 5;
+    /* wheel out one notch at a time; the event that lands the scale on
+       1x must reset the matrix home WITH the eased settle animation */
+    let landed = false;
+    for (let i = 0; i < 40 && !landed; i++) {
+      lb.dispatchEvent(lbWheel(512, 384, 100, false));
+      W.lightbox.flush();
+      landed = W.lightbox.state().scale === 1;
+    }
+    const st = W.lightbox.state();
+    const home = landed && st.scale === 1 && st.x === 0 && st.y === 0 &&
+      im.style.transform === "translate3d(0px, 0px, 0) scale(1)" &&
+      lb.classList.contains("is-settling");
+    /* a following gesture cancels the settle animation but 1x stays home */
+    lb.dispatchEvent(lbWheel(512, 384, 100, false));
+    W.lightbox.flush();
+    const st2 = W.lightbox.state();
+    const canceled = !lb.classList.contains("is-settling") &&
+      st2.scale === 1 && st2.x === 0 && st2.y === 0 &&
+      im.style.transform === "translate3d(0px, 0px, 0) scale(1)";
+    W.lightbox.close();
+    unpatchLbRect();
+    return atMax && home && canceled
+      ? ok()
+      : bad("max=" + atMax + " home=" + home + " canceled=" + canceled +
+            " scale=" + st2.scale);
+  });
+  check("LX6", "pointer pinch zooms + pans via midpoint; single finger pans only when zoomed; pinch->pan handoff", () => {
+    openLb();
+    const lb = doc.getElementById("lightbox");
+    const im = doc.getElementById("lightbox-img");
+    /* one finger at 1x: tracked but nothing to pan */
+    const down1 = pointer("pointerdown", 1, 200, 200);
+    im.dispatchEvent(down1);
+    im.dispatchEvent(pointer("pointermove", 1, 260, 260));
+    W.lightbox.flush();
+    const still = W.lightbox.state();
+    const noPanAt1x = still.scale === 1 && still.x === 0 && still.y === 0 &&
+      down1.defaultPrevented;
+    /* second contact -> pinch. Pointer 1 sits at (260, 260) after the
+       no-pan step, so: distance hypot(140, 60) -> hypot(240, 60),
+       midpoint (330, 230) -> (380, 230). k = sqrt(61200 / 23200); the
+       midpoint pans +50 first, then the anchor formula applies. */
+    im.dispatchEvent(pointer("pointerdown", 2, 400, 200));
+    im.dispatchEvent(pointer("pointermove", 2, 500, 200));
+    W.lightbox.flush();
+    const st = W.lightbox.state();
+    const k = Math.sqrt(61200 / 23200);
+    const pinchOk = approx(st.scale, k, 1e-9) &&
+      approx(st.x, (380 - LB_CX) * (1 - k) + k * 50) &&
+      approx(st.y, (230 - LB_CY) * (1 - k));
+    /* lift one finger: the surviving contact rebases as a pan */
+    lb.dispatchEvent(pointer("pointerup", 2, 500, 200));
+    im.dispatchEvent(pointer("pointermove", 1, 320, 320));
+    W.lightbox.flush();
+    const st2 = W.lightbox.state();
+    const handoff = approx(st2.x, st.x + 60) && approx(st2.y, st.y + 60);
+    im.dispatchEvent(pointer("pointerup", 1, 320, 320));
+    W.lightbox.close();
+    unpatchLbRect();
+    return noPanAt1x && pinchOk && handoff
+      ? ok("pinch x" + st.scale.toFixed(3) + " t=(" + st.x + ", " + st.y + ") -> pan (" + st2.x + ", " + st2.y + ")")
+      : bad("1x=" + noPanAt1x + " pinch=" + JSON.stringify(st) + " hand=" + JSON.stringify(st2));
+  });
+  check("LX7", "boundaries: scale pins at 5x and pan can never push the image off-canvas", () => {
+    openLb();
+    const lb = doc.getElementById("lightbox");
+    for (let i = 0; i < 30; i++) lb.dispatchEvent(lbWheel(512, 384, -100, false));
+    W.lightbox.flush();
+    const atMax = W.lightbox.state().scale === 5;
+    /* violent single-finger pan far past every edge */
+    const im = doc.getElementById("lightbox-img");
+    im.dispatchEvent(pointer("pointerdown", 1, 500, 400));
+    im.dispatchEvent(pointer("pointermove", 1, 5000, 4000));
+    W.lightbox.flush();
+    const st = W.lightbox.state();
+    /* second contact near pointer 1's CURRENT recorded position
+       (5000, 4000) and an outward spread: zoom tries x6 but stays
+       pinned at the 5x maximum */
+    im.dispatchEvent(pointer("pointerdown", 2, 5100, 4000));
+    im.dispatchEvent(pointer("pointermove", 2, 5700, 4000));
+    W.lightbox.flush();
+    const stMax = W.lightbox.state();
+    /* invariant: a 40px band of the scaled image always remains visible */
+    const hw = (LB_W * 5) / 2;
+    const hh = (LB_H * 5) / 2;
+    const vcx = LB_CX + st.x;
+    const vcy = LB_CY + st.y;
+    const inside = vcx - hw <= 1024 - 40 + 0.01 && vcx + hw >= 40 - 0.01 &&
+      vcy - hh <= 768 - 40 + 0.01 && vcy + hh >= 40 - 0.01;
+    im.dispatchEvent(pointer("pointerup", 1, 5000, 4000));
+    im.dispatchEvent(pointer("pointerup", 2, 5700, 4000));
+    W.lightbox.close();
+    unpatchLbRect();
+    return atMax && inside && approx(st.x, 2944) && approx(st.y, 2048) &&
+      stMax.scale === 5
+      ? ok("clamped t=(" + st.x + ", " + st.y + ") at 5x")
+      : bad("max=" + atMax + " inside=" + inside + " t=(" + st.x + ", " + st.y + ") maxScale=" + stMax.scale);
+  });
+  check("LX8", "closing resets the zoom matrix for the next open", () => {
+    openLb();
+    const im = doc.getElementById("lightbox-img");
+    const lb = doc.getElementById("lightbox");
+    const st = W.lightbox.zoomAt(500, 400, 3);
+    W.lightbox.flush();
+    const zoomed = st.scale === 3 && im.style.transform.indexOf("scale(3)") !== -1;
+    W.lightbox.close();
+    openLb();
+    const st2 = W.lightbox.state();
+    const fresh = st2.scale === 1 && st2.x === 0 && st2.y === 0 &&
+      im.style.transform === "" && !lb.hasAttribute("data-zoom");
+    W.lightbox.close();
+    unpatchLbRect();
+    return zoomed && fresh
+      ? ok()
+      : bad("zoomed=" + zoomed + " fresh=" + JSON.stringify(st2));
+  });
+  check("LX9", "lightbox CSS: flex figure, contain + grow + min-height:0, :empty caption, composited transform, touch-action", () => {
+    const figure = /\.lightbox-figure\s*\{[^}]*flex-direction:\s*column/.test(html) &&
+      /\.lightbox-figure\s*\{[^}]*box-sizing:\s*border-box/.test(html);
+    const img = /\.lightbox-figure img\s*\{[^}]*flex-grow:\s*1/.test(html) &&
+      /\.lightbox-figure img\s*\{[^}]*object-fit:\s*contain/.test(html) &&
+      /\.lightbox-figure img\s*\{[^}]*min-height:\s*0/.test(html) &&
+      /\.lightbox-figure img\s*\{[^}]*will-change:\s*transform/.test(html);
+    const cap = /\.lightbox-figure figcaption\s*\{[^}]*flex-shrink:\s*0/.test(html) &&
+      /\.lightbox-figure figcaption\s*\{[^}]*padding:\s*1rem 0/.test(html) &&
+      /\.lightbox-figure figcaption:empty\s*\{[^}]*display:\s*none/.test(html);
+    const modal = /\.lightbox\s*\{[^}]*touch-action:\s*none/.test(html) &&
+      /\.lightbox-btn\s*\{[^}]*z-index:\s*1/.test(html);
+    const afford = html.indexOf('[data-zoom="in"]') !== -1 &&
+      /\.is-panning/.test(html) && /\.is-settling/.test(html);
+    return figure && img && cap && modal && afford
+      ? ok()
+      : bad("figure=" + figure + " img=" + img + " cap=" + cap + " modal=" + modal + " afford=" + afford);
+  });
   check("RV1", "resize closes open popovers (no stale anchor)", () => {
     const btn = doc.getElementById("btn-docs");
     btn.dispatchEvent(new window.MouseEvent("click", { bubbles: true, cancelable: true }));
@@ -2161,6 +2416,7 @@ setTimeout(() => {
   console.log("v1.8.4 additions: the embed pass is AST-driven and conversion-integrated (image nodes collected from the parsed token tree — paren urls, multi-line titles, references, nesting, <img> — with boundary-checked exact rewrites), and the detection chain ends in the payload's magic bytes (extension, then Content-Type, then the bytes — a real image is never rejected for lacking an extension); repro-case suite covers the wikimedia .PNG + usefresh .svg pair");
     console.log("v1.8.5 additions: the embed transport is now the browser's own image load — images are detected on the compiled DOM and captured through a CORS-approved probe + offscreen canvas + toDataURL (no fetch() anywhere, no extension/header/magic-byte chain), then swapped into the live DOM and rewritten into the source (badge links included, code masked out) and re-persisted; per-image failures, oversize caps, dimensionless probes and never-settling loads keep the remote url and never break the import flow");
   console.log("v1.8.6 additions: the Data URI embedding engine is retired — the media pipeline is a single 'Strip remote media' privacy switch (default off: untouched passthrough, on: the 1.8.1 stripping AST pass runs before render/store across file/url/clipboard/drag imports), the sanitiser blocks every data: uri again, the clipboard flow invokes navigator.clipboard.readText() inside the direct user-gesture call stack (native permission prompt on 'prompt' states; NotFoundError/denied/empty guard toasts), and the lightbox image gains object-fit: contain with an explicit safe area that reserves the floating close button's row");
+  console.log("v1.8.7 additions: the lightbox is a viewport-filling flex figure (image grows into the safe area with object-fit: contain and min-height: 0, the caption is a flex-shrink: 0 sibling hidden via :empty) and gains a zero-dependency zoom/pan engine — PointerEvents pinch + pan with pinch->pan handoff, cursor-anchored wheel zoom, ctrlKey trackpad-pinch normalisation with exponential damping, one composited translate3d+scale write per animation frame, scale clamped to [1x, 5x], pan clamped so a 40px band always stays on-canvas, and an eased snap home when the matrix returns to 1x; dismissal is backdrop + close button + Esc only (image, caption and letterbox clicks never dismiss)");
   process.exit(fail + crash > 0 ? 1 : 0);
   }
 }, 150);

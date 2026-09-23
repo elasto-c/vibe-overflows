@@ -111,9 +111,15 @@ git log --oneline | head -5
 
 ### Images
 
-Click any image to view it at full size in a calm overlay — `Esc`, a click,
-or the close button returns you exactly where you were. Linked badge images
-are left alone so their links keep working.
+Click any image to view it at full size in a calm overlay. Once open, zoom
+right in: the mouse wheel and a trackpad pinch (two fingers + <kbd>Ctrl</kbd>)
+scale the image smoothly around your cursor, a two-finger pinch pans on a
+touchscreen, and dragging moves it when zoomed — scaling stays between 1×
+and 5×, the image can never be panned off-screen, and dropping back to 1×
+glides home to the center. Press <kbd>Esc</kbd>, click the close button, or
+click the backdrop around the image to return exactly where you were (clicks
+on the image itself never dismiss it). Linked badge images are left alone so
+their links keep working.
 
 ## Navigating long documents
 

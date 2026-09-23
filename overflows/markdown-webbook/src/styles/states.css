@@ -224,9 +224,12 @@
                 color: #fff;
             }
 
-            /* --- Image lightbox (M5 Proposal A; layout reworked 1.8.6):
-               the document's own image at full size, over a calm dark
-               scrim. Clicks, the close button and Esc all dismiss; linked
+            /* --- Image lightbox (M5 Proposal A; layout reworked 1.8.6,
+               flex fill + interactive zoom 1.8.7): the document's own
+               image at full size, over a calm dark scrim. Esc, a click on
+               the backdrop or the close button dismisses it — clicks on
+               the image, its caption or the letterbox surface never do,
+               because that surface is the zoom/pan playground. Linked
                badge images never zoom. */
             .lightbox {
                 position: fixed;
@@ -252,72 +255,86 @@
                 border: none;
                 width: 100%;
                 animation: lightbox-in 0.16s ease;
+                /* The modal owns every gesture while it is open (1.8.7):
+                   touch-action: none keeps the browser's own pinch-zoom,
+                   scrolling and rubber-banding out of the viewport, and
+                   text selection is noise on a scrim. */
+                touch-action: none;
+                overscroll-behavior: contain;
+                user-select: none;
+                -webkit-user-select: none;
             }
             @keyframes lightbox-in {
                 from {
                     opacity: 0;
                 }
             }
+            /* Responsive, viewport-filling figure (1.8.7): the figure
+               stacks image and caption vertically and fills the safe
+               area; the image scales fluidly within its remaining bounds
+               without aspect-ratio distortion (object-fit: contain), can
+               always shrink safely (min-height: 0) so the centered
+               caption is never squished or pushed out of view, and the
+               caption element disappears entirely when it has no
+               content. */
             .lightbox-figure {
                 margin: 0;
-                max-width: 100%;
-                min-width: 0;
                 display: flex;
                 flex-direction: column;
-                align-items: center;
-                justify-content: center;
-                animation: lightbox-zoom 0.16s ease;
-            }
-            @keyframes lightbox-zoom {
-                from {
-                    transform: scale(0.965);
-                }
+                width: 100%;
+                height: 100%;
+                min-width: 0;
+                min-height: 0;
+                box-sizing: border-box;
             }
             .lightbox-figure img {
                 display: block;
-                /* Occupy the maximum available space across whichever
-                   dimension constrains (width or height) while the
-                   intrinsic aspect ratio stays strictly preserved:
-                   object-fit: contain keeps the painted image complete
-                   inside the flexible box — no crop, no stretch. */
-                max-width: calc(
-                    100vw -
-                        (
-                            var(--space-5) + env(safe-area-inset-left)
-                        ) -
-                        (
-                            var(--space-5) + env(safe-area-inset-right)
-                        )
-                );
-                max-height: calc(
-                    100vh -
-                        (
-                            var(--space-5) + var(--control-size) +
-                                env(safe-area-inset-top)
-                        ) -
-                        (var(--space-5) + env(safe-area-inset-bottom)) -
-                        /* caption reserve: margin-top + two caption lines */
-                        (var(--space-3) + 2.6em)
-                );
-                width: auto;
-                height: auto;
-                object-fit: contain;
                 border-radius: var(--radius-md);
                 box-shadow: var(--shadow-2);
+                flex-grow: 1;
+                min-height: 0;
+                max-width: 100%;
+                object-fit: contain;
                 /* Never inherit the dark theme's image dimming */
                 filter: none !important;
+                /* Zoom engine (1.8.7): the transform is the ONLY property
+                   gestures write, so zooming and panning stay on the
+                   compositor and never trigger layout or paint. */
+                will-change: transform;
+                cursor: zoom-in;
+            }
+            .lightbox[data-zoom="in"] .lightbox-figure img {
+                cursor: grab;
+            }
+            .lightbox.is-panning .lightbox-figure img {
+                cursor: grabbing;
+            }
+            /* Returning to 1x snaps the matrix home with a short eased
+               transition; the class exists only for that snap, so live
+               gestures never pay for a transition. */
+            .lightbox.is-settling .lightbox-figure img {
+                transition: transform 180ms ease;
             }
             .lightbox-figure figcaption {
                 flex-shrink: 0;
-                margin-top: var(--space-3);
+                padding: 1rem 0;
+                text-align: center;
+                overflow-wrap: anywhere;
                 font-size: 0.85rem;
                 color: rgba(255, 255, 255, 0.72);
-                text-align: center;
                 max-width: 78ch;
-                overflow-wrap: anywhere;
+                margin: 0 auto;
+            }
+            .lightbox-figure figcaption:empty {
+                display: none;
             }
             .lightbox-btn {
                 position: absolute;
+                /* The zoomed image transforms into its own stacking
+                   context and paints after this button in tree order —
+                   the explicit level keeps the control above the image
+                   at every zoom level. */
+                z-index: 1;
                 top: calc(var(--space-4) + env(safe-area-inset-top));
                 right: calc(var(--space-4) + env(safe-area-inset-right));
                 width: var(--control-size);

@@ -74,7 +74,7 @@ controls:
 | Tables | columns hold a single line until they would exceed half the container (`--wb-col-cap`, container-query math), then wrap; a genuinely unbreakable line pans a complete table box with hidden scrollbars, mouse drag, and scroll-driven edge shadows that render only while the table actually pans |
 | Task lists | checkboxes are live — ticking one persists per document |
 | Panels | the contents drawer and the search layer are mutually exclusive — opening one dismisses the other |
-| Images | click to open the lightbox — the preview fills the viewport's safe area with `object-fit: contain`, never touches an edge, and the floating close button never overlaps the image |
+| Images | click to open the lightbox — the preview fills the viewport's safe area with `object-fit: contain`, never touches an edge, and the floating close button never overlaps the image. **Interactive zoom** (zero dependencies): mouse wheel and trackpad pinch zoom in smooth exponential steps anchored at the cursor, two-finger pinch and single-finger drag pan on mobile — all on one composited `translate3d + scale` transform, clamped to 1×–5× with the image never pannable off-screen, snapping back home at 1×. Dismissal: <kbd>Esc</kbd>, the close button, or a click on the backdrop around the image |
 | Remote media | document menu → **Strip remote media** (default off): **off** passes remote media through untouched — every `https://` image, video and audio url renders from its source and survives into every export, exactly as the author wrote it. **on** runs a privacy pass over the source BEFORE it is rendered or stored: image, video and audio constructs are removed (markdown images incl. reference/shorthand forms and linked badges, raw HTML `video`/`audio`/`picture` with their content, `img`/`source`/`track` tags), so the document reads and exports as pure local text. Links, text and code survive, and examples inside code fences, code spans and indented blocks are structurally protected — which urls count as media is decided by the construct they appear in, never by extension. The decision is applied at import time across all four import routes (file picker, drag & drop, Open from url…, Paste from clipboard) and remembered on this device |
 | Progress | slim bottom progress bar tracks reading position |
 
@@ -208,7 +208,7 @@ npm run verify      # node tools/verify_refactor.js
 ```
 
 This executes the built file inside jsdom (real marked, real DOMPurify, real
-app pipeline) and runs **175 checks**: the 44-construct Markdown corpus
+app pipeline) and runs **182 checks**: the 44-construct Markdown corpus
 (parser correctness, sanitisation policy, embed containment), integration
 flows (import, settings persistence, TOC/scrollspy, command palette,
 highlighting, lightbox), the publication suite (1:1 replica, authoring
@@ -216,13 +216,17 @@ exclusions, metadata round-trip, hostile-content containment), the print
 pipeline, the v1.8.0 suite (url import success/failure/loading, mdx
 naming, panel exclusivity, z-order), the v1.8.1 suite (menu placements,
 strip-toggle persistence, strip media pass, clipboard paste flow and
-guards, sanitiser data-uri policy) and the v1.8.6 suite (dead-embed purge
+guards, sanitiser data-uri policy), the v1.8.6 suite (dead-embed purge
 proof over the compiled bundle, the passthrough/strip pipeline across the
 import routes, the readText direct-user-gesture call-stack proof and the
-guard toasts for non-text/empty/denied clipboards). Current status:
-**175 / 175 pass**.
+guard toasts for non-text/empty/denied clipboards) and the v1.8.7 suite
+(the zoom engine's maths driven against a pinned element box: cursor
+anchoring, wheel/trackpad/pinch/pan primitives, pinch→pan handoff,
+[1×, 5×] and off-canvas clamps, the 1× settle-home reset, the dismissal
+matrix and the lightbox CSS contract). Current status:
+**182 / 182 pass**.
 
-An optional Chromium visual smoke (`tools/smoke_v186.py`,
+An optional Chromium visual smoke (`tools/smoke_v187.py`,
 `pip install playwright && playwright install chromium`) drives the real
 browser across the latest refinements — the menu placements and the renamed
 **Strip remote media** toggle, the url modal's shell metrics and loading
@@ -235,11 +239,17 @@ survives into storage), **the native clipboard path** (real
 `navigator.clipboard.readText` denied on an ungranted origin with a clear
 toast, and a synchronous call-stack proof that the read fires inside the
 click gesture), the Ctrl/Cmd+Shift+V shortcut with its toasts and
-help-panel row, **the lightbox layout** (`object-fit: contain`, 64/20 px
-safe-area padding, the image box measured inside the viewport with zero
-overlap against the floating close button and the exact intrinsic aspect
-ratio), the metadata save flow across tab/toolbar/footer — and screenshots
-each state. Current status: **39 / 39 pass**.
+help-panel row, **the lightbox** (flex figure with `object-fit: contain`,
+64/20 px safe-area padding, the painted box measured against the intrinsic
+aspect ratio with zero overlap against the floating close button,
+`figcaption:empty` hiding itself, `touch-action: none` and the
+zoom-in/grab cursor affordances; **real trusted wheel zoom anchored at the
+cursor**, ctrlKey trackpad-pinch steps, the 5× clamp, drag-pan with the
+40 px on-canvas band invariant, the exact 1× reset matrix, a synthetic
+two-finger pinch with `preventDefault` proof, and the dismissal matrix —
+image, caption and letterbox clicks never dismiss; backdrop and close
+button do), the metadata save flow across tab/toolbar/footer — and
+screenshots each state. Current status: **56 / 56 pass**.
 
 ## Repository layout
 
@@ -265,8 +275,8 @@ markdown-webbook/
 │   ├── markdown_webbook_audit.md           ← the 20-section audit that drove the refactors
 │   └── quality-of-life-improvement-plan.md ← milestone plan (M0–M5) + feature proposals
 └── tools/
-    ├── verify_refactor.js                  ← 175-check jsdom verification harness
-    └── smoke_v186.py                       ← Chromium visual smoke (Playwright)
+    ├── verify_refactor.js                  ← 182-check jsdom verification harness
+    └── smoke_v187.py                       ← Chromium visual smoke (Playwright)
 ```
 
 ## Version history
@@ -284,7 +294,7 @@ markdown-webbook/
 | 1.7.1 | Help panel zero padding, 6 px vertical rhythm on the description row (label + editor), panel labels follow the theme typeface |
 | 1.7.2 | Meta dialog rhythm (top-less form padding, 10 px description margins, borderless pinned header), mobile search field floor, table rework: container-capped columns (single line → wrap past 50 %), complete-table horizontal pan with scroll-driven edge shadows |
 | 1.7.3 | Edge shadows only on tables that truly pan (`.is-pannable` measured per render/resize — an inactive scroll timeline would otherwise paint raw gradients on static tables), one shared `.modal-x` close button across modals, panel padding isolation (meta `0`, help `--space-4`) with a coherent 1.05 rem/700 header voice, 720 px find bar tightening (no gap, 30 px buttons, content-sized match count) |
-| repo (1.7.3) | Real build process: sources split into `src/` (shell, 7 stylesheets, boot + app layers, vendored marked/DOMPurify, default document) + `build.js` reassembling the artifact byte-identically with the containment escape and self-checks; the artifact is assembled into `dist/` and committed, with CI verifying the committed copy stays byte-identical to the sources |
+| 1.7.3 | Real build process: sources split into `src/` (shell, 7 stylesheets, boot + app layers, vendored marked/DOMPurify, default document) + `build.js` reassembling the artifact byte-identically with the containment escape and self-checks; the artifact is assembled into `dist/` and committed, with CI verifying the committed copy stays byte-identical to the sources |
 | 1.8.0 | **Open from url…** (doc-menu entry + meta-panel-style modal: label-less left-aligned url field, spinner loading state on Open, silent success, error toasts for network/HTTP/unsupported-extension/HTML-page/binary cases, http(s)-only with `.md`/`.markdown`/`.mdx` validation, always excluded from publications); `.mdx` imports (file picker + drag & drop + url) treated as Markdown with the download preserving the original name and content; extension-aware **Download .md / .mdx** label in the menu and palette; contents drawer and search layer made mutually exclusive; back-to-top button layered below the contents drawer; removed the never-working paste-into-welcome-screen import (and its mention in the sample document) |
 | 1.8.1 | **Paste from clipboard** (doc-menu item below *Open from url…*: clipboard read via the async items API with text/plain type inspection — non-text, empty and denied clipboards each get a specific error toast, text content renders through the media pipeline with the usual success toast) and **Fetch & embed remote media** (doc-menu switch above *Include document menu in publication*, default off): off strips media (image/video/audio) constructs from every import, on fetches each image once at import time (content-type + magic-byte check, per-image failure fallback, dedupe + concurrency pool) and rewrites it into a sanitiser-allowed `data:image/*` uri so exports carry the images; media detection is structural (markdown syntax + media HTML tags), code spans/fences are protected; both new items are always excluded from publications; *Edit HTML metadata* regrouped into its own menu section below *Print / save as PDF* |
 | 1.8.2 | **Wider embed format range**: the embed pass encodes the standard image formats — png, jpg/jpeg, gif, webp, svg (image/svg+xml), bmp, ico and avif — through an explicit allowlist that canonicalises aliases (`image/jpg` → jpeg, `image/svg` → svg+xml, `image/ico`/`image/vnd.microsoft.icon` → x-icon), with the magic-byte sniffer extended to svg (xml prolog/doctype + `<svg` root) and avif (`ftyp` box brands avif/avis/av01) for generically-served payloads; **Paste-from-clipboard keyboard shortcut** (<kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>Shift</kbd>+<kbd>V</kbd>): same guarded flow as the menu item with success/error toasts, listed in the Help panel, skipped inside editable controls and not installed in publications (row + listener removed); **exact-capture metadata save**: an empty field clears its entry in the store (a cleared title reads as *Untitled*), and the captured title is applied to every surface that names the document — toolbar, footer, browser tab, the form's placeholder, download naming, the publication head — and survives a refresh |
@@ -292,6 +302,7 @@ markdown-webbook/
 | 1.8.4 | **AST-driven, conversion-integrated embedding**: image nodes are identified from the parsed token tree (marked lexer walk — inline/angle/titled/multi-line-title/reference forms with resolved hrefs, raw `<img src>` in html tokens, at any nesting depth in quotes, lists and tables) instead of pattern-scanning the source text, so every construct the parser accepts is embedded; rewrites are exact, boundary-checked url replacements in descending-length order (prefix-sharing urls never mangle each other), and indented code blocks are now protected too. **Three-step resource detection**: file extension → response Content-Type (canonicalising allowlist) → the payload's magic bytes as the final authority, so a real image is never rejected merely for lacking a conventional image extension (an extensionless svg shipped as `text/xml`/`application/xml`/`text/html` now embeds; an html page, pdf or tiff payload still matches nothing and keeps its url). Fetch probes send no referrer. The reproduction case — a wikimedia `.PNG` image and a usefresh.dev `.svg` image in one document — embeds both as data uris (verified e2e); a resource the browser cannot byte-read (e.g. a server sending no `access-control-allow-origin` header, as usefresh.dev does in the wild) keeps its original url and still displays via the remote src |
 | 1.8.5 | **Native browser image capture — the fetch-based embed transport is gone**: with *Embed remote media* on, the document is parsed and compiled exactly as usual and the pass then walks the rendered DOM, finds every `<img>` the browser loaded natively, re-requests each url through a CORS-approved probe image (browser-cache served), draws the decoded pixels onto an offscreen canvas and encodes them with `toDataURL()` — no `fetch()` anywhere, so the cross-origin rules that block programmatic byte access from `file://`/localhost never apply to the transport. Data uris are swapped into the live `<img>` elements (plus any `<a href>` targeting the same url — linked badges), the source text is rewritten once with code masked out, and the rewrite is re-persisted so embeddings survive refresh and every export; the pass is idempotent and its environment adapters (probe loader, canvas) are injectable for testing. Per-image failures — including a real server that sends no `access-control-allow-origin` header — keep the remote url with the image still displaying; pixel-count, data-uri-size and never-settling-load caps keep absurd images out. The 1.8.2–1.8.4 extension/header/magic-byte identification chain is retired: a CORS-approved image embeds whatever its url or header claims, because the browser decodes the bytes |
 | 1.8.6 | **Media pipeline simplified — the Data URI embedding engine is retired**: the *Embed remote media* switch becomes **Strip remote media** (default off): off passes remote media through untouched — no network fetching, no Data URI conversion, no rewriting; on runs the 1.8.1 media-stripping AST pass over the source before it is rendered AND stored, across all four import routes (file picker, drag & drop, Open from url…, Paste from clipboard). All embedding machinery is deleted from the bundle (capture/canvas/env adapters, concurrency pool, exact-rewrite utilities, the 1.8.2–1.8.4 identification chain, the `mdwb:embedMedia` switch — its stale storage key is deleted on boot), the sanitiser's `data:image` branch reverts with it (data: links stay blocked; data: payloads on media elements fall back to DOMPurify's stock vendor default), and the retired embed-era smoke suites are archived. **Image lightbox layout**: the preview scales across its constraining dimension with `object-fit: contain` (no crop, no stretch), inside an explicit viewport safe area (64 px top, 20 px sides/bottom, safe-area insets included) whose top band reserves the floating close button's row — the control can never overlap or obscure any part of the image. **Clipboard permission workflow**: Paste from clipboard and its Ctrl/Cmd+Shift+V shortcut invoke `navigator.clipboard.readText()` synchronously inside the direct user-gesture call stack — the native permission prompt appears whenever the origin's clipboard-read state is `prompt`; a granted read flows through the media pipeline per the Strip remote media state, while denied/dismissed prompts, non-text clipboards (NotFoundError) and empty payloads each surface a specific non-intrusive error toast |
+| repo (1.8.7) | **Lightbox optimization — interactive zoom & pan, zero dependencies**: the preview becomes a viewport-filling flex figure — the image grows into the safe area with `object-fit: contain` and `min-height: 0`, the caption is a `flex-shrink: 0` sibling that `:empty` hides entirely — and gains a cross-platform zoom engine built on the same two primitives everywhere: PointerEvents track two-finger **pinch** (distance ratio → scale, midpoint delta → pan, with a pinch→pan handoff when a finger lifts) and single-finger **pan** while zoomed, `touch-action: none` keeps the browser's own zoom/scroll/rubber-banding out of the modal, the **mouse wheel** zooms in damped exponential steps (≈ ×1.22 per notch) anchored at the cursor's exact position, a **ctrlKey wheel** (the trackpad-pinch encoding) is normalised with a stronger exponential curve so a physical pinch feels continuous, everything mutates only scale and one `translate3d() scale()` declaration written once per animation frame (compositor-only — no layout, no paint), scale is clamped to **1×–5×**, pan is clamped so a 40 px band of the image always stays on-canvas, and landing back on 1× snaps the matrix home with a short eased transition. **Dismissal** narrows to Esc, the close button and a click on the backdrop around the figure — image, caption and letterbox clicks never dismiss, and a drag that ends over the backdrop swallows its trailing click instead of closing mid-gesture. The close button gains an explicit stacking level so the zoomed image never paints over it |
 
 ## Compatibility
 
@@ -305,4 +316,8 @@ API (`navigator.clipboard.readText()`, invoked directly inside the click or
 keystroke so the native permission prompt can appear) — most browsers ask
 for permission on first use, and a denied prompt, a prompt dismissal or a
 clipboard holding no text surfaces a clear error toast rather than a broken
-import. Nothing else ever leaves the device.
+import. **Lightbox zoom/pan** is built entirely on standard primitives —
+Pointer Events, `wheel` (with its `ctrlKey` trackpad-pinch encoding),
+`touch-action: none` and composited CSS transforms — with no library and no
+polyfills; browsers without Pointer Events simply keep the click-to-view
+lightbox without the gestures. Nothing else ever leaves the device.
