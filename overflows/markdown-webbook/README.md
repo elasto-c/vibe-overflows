@@ -64,7 +64,7 @@ controls:
 |---|---|
 | Open a local file | document menu → **Open Markdown file…**, <kbd>Ctrl</kbd>+<kbd>O</kbd>, or drag a `.md`/`.markdown`/`.mdx`/`.txt` file onto the page |
 | Open from a url | document menu → **Open from url…** — fetches a `.md`, `.markdown` or `.mdx` file straight from a web address (a network call made only when you trigger it) |
-| Paste from clipboard | document menu → **Paste from clipboard** — renders the most recent clipboard text; clipboards that hold no text (an image, a file) surface an error toast, never a broken render |
+| Paste from clipboard | document menu → **Paste from clipboard** or <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>Shift</kbd>+<kbd>V</kbd> — renders the most recent clipboard text with a success toast; clipboards that hold no text (an image, a file), empty clipboards and denied permission each surface a specific error toast, never a broken render |
 | Table of contents | <kbd>T</kbd> or the contents button — nested headings with scrollspy |
 | Command palette | <kbd>Ctrl</kbd>/<kbd>Cmd</kbd> + <kbd>K</kbd> — jump to headings, run actions |
 | Search the document | <kbd>/</kbd> or <kbd>Ctrl</kbd>+<kbd>F</kbd> — with next/previous match navigation |
@@ -75,7 +75,7 @@ controls:
 | Task lists | checkboxes are live — ticking one persists per document |
 | Panels | the contents drawer and the search layer are mutually exclusive — opening one dismisses the other |
 | Images | click to open the lightbox |
-| Remote media | document menu → **Fetch & embed remote media** (default off): **off** strips image/video/audio urls from every import (file, url, clipboard, dragged text) so the document reads and exports as pure local text; **on** downloads each image at import time and rewrites it as a `data:image/…` uri inside the source, so images survive every export path. Media-ness is decided by the construct a url appears in (markdown image syntax, `<img>`/`<video>`/`<audio>`/`<picture>` tags) — never by file extension — and fenced code blocks and inline code spans are always left untouched. Images that fail to fetch or aren't images keep their original url |
+| Remote media | document menu → **Fetch & embed remote media** (default off): **off** strips image/video/audio urls from every import (file, url, clipboard, dragged text) so the document reads and exports as pure local text; **on** downloads each image at import time and rewrites it as a `data:image/…` uri inside the source, so images survive every export path. The standard image formats are encoded — png, jpg/jpeg, gif, webp, svg (image/svg+xml), bmp, ico and avif — checked by content-type (with aliases like `image/jpg` and `image/ico` resolved to their canonical types) plus a magic-byte sniff that covers svg and avif when the server sends a generic type. Media-ness is decided by the construct a url appears in (markdown image syntax, `<img>`/`<video>`/`<audio>`/`<picture>` tags) — never by file extension — and fenced code blocks and inline code spans are always left untouched. Images that fail to fetch or aren't images keep their original url |
 | Progress | slim bottom progress bar tracks reading position |
 
 **Raw HTML policy** is a reading setting (`Raw HTML: Sanitise / Strip`). It
@@ -99,7 +99,11 @@ pipeline, in menu order:
    publication's **Title**, **Author** and **Description** (grouped in its
    own menu section just below *Print / save as PDF*). These are written
    into the exported file's `<head>` (title tag, author meta, description
-   meta). Leaving a field empty falls back to the document's own values.
+   meta), and saving is an exact capture: a field left empty clears its
+   entry — the title then reads as **Untitled** — while a captured title is
+   applied everywhere the document is named (toolbar, footer, browser tab,
+   the form's own placeholder, download naming and every export) and
+   survives a refresh.
 2. **Fetch & embed remote media** — the import-time media switch described
    above; it shapes what the exported editions contain.
 3. **Include document menu in publication** — a toggle that decides whether
@@ -113,9 +117,11 @@ pipeline, in menu order:
    publishable HTML*, the *Fetch & embed remote media* switch and the
    *Include document menu in publication* switch — so a publication never
    carries a file-open, clipboard-paste, network-fetch or metadata entry
-   point. The open-file (<kbd>Ctrl</kbd>+<kbd>O</kbd>) and document-menu shortcut entries are
-   removed from its Help panel **and** its key listeners. The metadata you
-   entered in step 1 is embedded in the head.
+   point. The open-file (<kbd>Ctrl</kbd>+<kbd>O</kbd>), paste-from-clipboard
+   (<kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>Shift</kbd>+<kbd>V</kbd>) and
+   document-menu shortcut entries are removed from its Help panel **and**
+   its key listeners. The metadata you entered in step 1 is embedded in
+   the head.
 5. Share the exported file. It is a standalone publication: self-contained,
    offline, and carrying no authoring tools.
 
@@ -202,24 +208,29 @@ npm run verify      # node tools/verify_refactor.js
 ```
 
 This executes the built file inside jsdom (real marked, real DOMPurify, real
-app pipeline) and runs **165 checks**: the 44-construct Markdown corpus
+app pipeline) and runs **175 checks**: the 44-construct Markdown corpus
 (parser correctness, sanitisation policy, embed containment), integration
 flows (import, settings persistence, TOC/scrollspy, command palette,
 highlighting, lightbox), the publication suite (1:1 replica, authoring
 exclusions, metadata round-trip, hostile-content containment), the print
 pipeline, the v1.8.0 suite (url import success/failure/loading, mdx
-naming, panel exclusivity, z-order) and the v1.8.1 suite (menu placements,
+naming, panel exclusivity, z-order), the v1.8.1 suite (menu placements,
 embed-toggle persistence, strip/embed media passes, clipboard paste flow and
-guards, sanitiser data-uri policy). Current status: **165 / 165 pass**.
+guards, sanitiser data-uri policy) and the v1.8.2 suite (the standard-format
+embed allowlist with svg/avif sniffs, the paste keyboard shortcut with its
+guards and help-panel row, exact-capture metadata save across every title
+surface). Current status: **175 / 175 pass**.
 
-An optional Chromium visual smoke (`tools/smoke_v181.py`,
+An optional Chromium visual smoke (`tools/smoke_v182.py`,
 `pip install playwright && playwright install chromium`) drives the real
 browser across the latest refinements — the menu placements, the url modal's
 shell metrics and loading spinner, silent success vs error toasts over
 intercepted routes, the extension-aware Download label, clipboard paste with
 stubbed clipboard payloads, image embedding into data uris over an
-intercepted image route, panel mutual exclusion — and screenshots each
-state. Current status: **19 / 19 pass**.
+intercepted image route (png plus generic-served svg and avif), the
+Ctrl/Cmd+Shift+V shortcut with its toasts and help-panel row, the
+metadata save flow across tab/toolbar/footer — and screenshots each state.
+Current status: **29 / 29 pass**.
 
 ## Repository layout
 
@@ -245,8 +256,8 @@ markdown-webbook/
 │   ├── markdown_webbook_audit.md           ← the 20-section audit that drove the refactors
 │   └── quality-of-life-improvement-plan.md ← milestone plan (M0–M5) + feature proposals
 └── tools/
-    ├── verify_refactor.js                  ← 165-check jsdom verification harness
-    └── smoke_v181.py                       ← Chromium visual smoke (Playwright)
+    ├── verify_refactor.js                  ← 175-check jsdom verification harness
+    └── smoke_v182.py                       ← Chromium visual smoke (Playwright)
 ```
 
 ## Version history
@@ -267,6 +278,7 @@ markdown-webbook/
 | repo (1.7.3) | Real build process: sources split into `src/` (shell, 7 stylesheets, boot + app layers, vendored marked/DOMPurify, default document) + `build.js` reassembling the artifact byte-identically with the containment escape and self-checks; the artifact is assembled into `dist/` and committed, with CI verifying the committed copy stays byte-identical to the sources |
 | 1.8.0 | **Open from url…** (doc-menu entry + meta-panel-style modal: label-less left-aligned url field, spinner loading state on Open, silent success, error toasts for network/HTTP/unsupported-extension/HTML-page/binary cases, http(s)-only with `.md`/`.markdown`/`.mdx` validation, always excluded from publications); `.mdx` imports (file picker + drag & drop + url) treated as Markdown with the download preserving the original name and content; extension-aware **Download .md / .mdx** label in the menu and palette; contents drawer and search layer made mutually exclusive; back-to-top button layered below the contents drawer; removed the never-working paste-into-welcome-screen import (and its mention in the sample document) |
 | 1.8.1 | **Paste from clipboard** (doc-menu item below *Open from url…*: clipboard read via the async items API with text/plain type inspection — non-text, empty and denied clipboards each get a specific error toast, text content renders through the media pipeline with the usual success toast) and **Fetch & embed remote media** (doc-menu switch above *Include document menu in publication*, default off): off strips media (image/video/audio) constructs from every import, on fetches each image once at import time (content-type + magic-byte check, per-image failure fallback, dedupe + concurrency pool) and rewrites it into a sanitiser-allowed `data:image/*` uri so exports carry the images; media detection is structural (markdown syntax + media HTML tags), code spans/fences are protected; both new items are always excluded from publications; *Edit HTML metadata* regrouped into its own menu section below *Print / save as PDF* |
+| 1.8.2 | **Wider embed format range**: the embed pass encodes the standard image formats — png, jpg/jpeg, gif, webp, svg (image/svg+xml), bmp, ico and avif — through an explicit allowlist that canonicalises aliases (`image/jpg` → jpeg, `image/svg` → svg+xml, `image/ico`/`image/vnd.microsoft.icon` → x-icon), with the magic-byte sniffer extended to svg (xml prolog/doctype + `<svg` root) and avif (`ftyp` box brands avif/avis/av01) for generically-served payloads; **Paste-from-clipboard keyboard shortcut** (<kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>Shift</kbd>+<kbd>V</kbd>): same guarded flow as the menu item with success/error toasts, listed in the Help panel, skipped inside editable controls and not installed in publications (row + listener removed); **exact-capture metadata save**: an empty field clears its entry in the store (a cleared title reads as *Untitled*), and the captured title is applied to every surface that names the document — toolbar, footer, browser tab, the form's placeholder, download naming, the publication head — and survives a refresh |
 
 ## Compatibility
 

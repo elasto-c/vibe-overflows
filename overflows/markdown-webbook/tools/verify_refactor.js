@@ -1651,6 +1651,265 @@ setTimeout(() => {
       : bad("gone=" + gone + " dang=" + noDangling + " adj=" + adjacent +
             " kept=" + kept);
   });
+
+  /* ---------------- v1.8.2: formats, paste shortcut, meta save ---------------- */
+
+  check("N01", "embed mime allowlist: standard formats, canonical aliases", () => {
+    const rm = W.media.resolveMime;
+    const png = [0x89, 0x50, 0x4e, 0x47, 0, 0, 0, 0, 0, 0, 0, 0];
+    const canonical = [
+      ["image/png", "image/png"],
+      ["image/jpg", "image/jpeg"],
+      ["image/jpeg", "image/jpeg"],
+      ["image/gif", "image/gif"],
+      ["image/webp", "image/webp"],
+      ["image/svg+xml", "image/svg+xml"],
+      ["image/svg", "image/svg+xml"],
+      ["image/bmp", "image/bmp"],
+      ["image/ico", "image/x-icon"],
+      ["image/x-icon", "image/x-icon"],
+      ["image/vnd.microsoft.icon", "image/x-icon"],
+      ["image/avif", "image/avif"],
+      ["image/avif-sequence", "image/avif"],
+    ].every(([ct, want]) => rm(ct, png) === want);
+    const params = rm("image/svg+xml; charset=utf-8", png) === "image/svg+xml";
+    const ci = rm("IMAGE/PNG", png) === "image/png";
+    const foreign = rm("image/tiff", png) === null &&
+      rm("text/html", png) === null && rm("application/pdf", png) === null;
+    return canonical && params && ci && foreign
+      ? ok() : bad("canon=" + canonical + " params=" + params +
+                   " ci=" + ci + " foreign=" + foreign);
+  });
+  check("N02", "magic-byte sniff gained svg + avif; binaries regress-none", () => {
+    const rm = W.media.resolveMime;
+    const bytes = (s) => Array.prototype.map.call(s, (c) => c.charCodeAt(0));
+    const svgXml = bytes('<?xml version="1.0"?><svg xmlns="http://www.w3.org/2000/svg"></svg>');
+    const svgBare = bytes("<svg xmlns='http://www.w3.org/2000/svg'><path/></svg>");
+    const svgDoc = bytes("<!DOCTYPE svg> <svg><!-- x --></svg>");
+    const svgCap = bytes("<SVG/> Paddington"); /* 13 chars, case-insensitive root */
+    const avif = [0, 0, 0, 0, 0x66, 0x74, 0x79, 0x70, 0x61, 0x76, 0x69, 0x66, 0, 0, 0, 0];
+    const avis = [0, 0, 0, 0, 0x66, 0x74, 0x79, 0x70, 0x61, 0x76, 0x69, 0x73, 0, 0, 0, 0];
+    const av01 = [0, 0, 0, 0, 0x66, 0x74, 0x79, 0x70, 0x61, 0x76, 0x30, 0x31, 0, 0, 0, 0];
+    const mp4 = [0, 0, 0, 0x18, 0x66, 0x74, 0x79, 0x70, 0x6d, 0x70, 0x34, 0x32]; /* ftypmp42 */
+    const ico = [0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0];
+    const bmp = [0x42, 0x4d, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    const html = bytes("<html><body>nope</body></html>");
+    const svgOk = rm("", svgXml) === "image/svg+xml" &&
+      rm("", svgBare) === "image/svg+xml" && rm("", svgDoc) === "image/svg+xml" &&
+      rm("", svgCap) === "image/svg+xml";
+    const avifOk = rm("", avif) === "image/avif" &&
+      rm("", avis) === "image/avif" && rm("", av01) === "image/avif";
+    const mp4Rejected = rm("", mp4) === null;
+    const bins = rm("", ico) === "image/x-icon" && rm("", bmp) === "image/bmp";
+    const notFooled = rm("", html) === null;
+    return svgOk && avifOk && mp4Rejected && bins && notFooled
+      ? ok() : bad("svg=" + svgOk + " avif=" + avifOk +
+                   " mp4=" + !mp4Rejected + " bins=" + bins + " html=" + !notFooled);
+  });
+  checkA("N03", "embed pass encodes svg + avif end-to-end", async (Wl) => {
+    Wl.media.setEnabled(true);
+    const svgStr = '<svg xmlns="http://www.w3.org/2000/svg"><rect width="4" height="4"/></svg>';
+    const svgBytes = new Uint8Array(
+      Array.prototype.map.call(svgStr, (c) => c.charCodeAt(0)),
+    );
+    const avifBytes = new Uint8Array(
+      [0, 0, 0, 0, 0x66, 0x74, 0x79, 0x70, 0x61, 0x76, 0x69, 0x66, 0, 0, 0, 0],
+    );
+    const resp = (buf, ct) => ({
+      ok: true, status: 200, statusText: "OK",
+      headers: { get: (k) => (/content-type/i.test(k) ? ct : null) },
+      arrayBuffer: () => Promise.resolve(buf),
+    });
+    window.fetch = (u) => /svg/.test(u)
+      ? Promise.resolve(resp(svgBytes, "application/octet-stream"))
+      : Promise.resolve(resp(avifBytes, "image/avif"));
+    const out = await Wl.media.prepare(
+      "![v](https://img/logo.svg) and ![a](https://img/pic.avif)",
+    );
+    const svgOk = out.indexOf("![v](data:image/svg+xml;base64,") === 0;
+    const avifOk = out.indexOf("![a](data:image/avif;base64,") !== -1;
+    Wl.media.setEnabled(false);
+    return svgOk && avifOk
+      ? ok(out.slice(0, 60))
+      : bad("svg=" + svgOk + " avif=" + avifOk + " out=" + out.slice(0, 120));
+  });
+  checkA("N04", "keyboard shortcut pastes the clipboard with success toast", async (Wl) => {
+    Wl.openMarkdown("# Seed\n\nbefore shortcut");
+    window.navigator.clipboard = {
+      read: () => Promise.resolve([{
+        types: ["text/plain"],
+        getType: () => Promise.resolve(new window.Blob(
+          ["# Via Shortcut\n\nbody"], { type: "text/plain" })),
+      }]),
+    };
+    doc.body.focus();
+    doc.dispatchEvent(new window.KeyboardEvent("keydown", {
+      key: "V", ctrlKey: true, shiftKey: true, bubbles: true, cancelable: true,
+    }));
+    await drain();
+    const rendered = doc.getElementById("content").textContent
+      .indexOf("Via Shortcut") !== -1;
+    const toasted = toastText().indexOf("Via Shortcut") !== -1;
+    return rendered && toasted
+      ? ok(toastText())
+      : bad("render=" + rendered + " toast=" + toastText());
+  });
+  checkA("N05", "shortcut failure paths toast (denied, non-text)", async (Wl) => {
+    const denied = new Error("no");
+    denied.name = "NotAllowedError";
+    window.navigator.clipboard = { read: () => Promise.reject(denied) };
+    doc.dispatchEvent(new window.KeyboardEvent("keydown", {
+      key: "V", ctrlKey: true, shiftKey: true, bubbles: true, cancelable: true,
+    }));
+    await drain();
+    const deniedToast = toastText();
+    window.navigator.clipboard = {
+      read: () => Promise.resolve([{ types: ["image/png"] }]),
+    };
+    doc.dispatchEvent(new window.KeyboardEvent("keydown", {
+      key: "V", metaKey: true, shiftKey: true, bubbles: true, cancelable: true,
+    }));
+    await drain();
+    const nonText = toastText();
+    const both = /denied/i.test(deniedToast) && /any text/.test(nonText);
+    return both
+      ? ok(deniedToast + " | " + nonText)
+      : bad("denied=" + deniedToast + " nontext=" + nonText);
+  });
+  check("N06", "shortcut guards: editable focus and MDWB_PUB skip the paste", () => {
+    W.openMarkdown("# N06\n\nstable");
+    const before = doc.getElementById("content").textContent;
+    let calls = 0;
+    window.navigator.clipboard = {
+      read: () => {
+        calls++;
+        return Promise.resolve([{
+          types: ["text/plain"],
+          getType: () => Promise.resolve(new window.Blob(
+            ["# HIJACK"], { type: "text/plain" })),
+        }]);
+      },
+    };
+    /* Inside an editable control the browser's own paste stays native. */
+    const input = doc.getElementById("palette-input");
+    input.focus();
+    input.dispatchEvent(new window.KeyboardEvent("keydown", {
+      key: "V", ctrlKey: true, shiftKey: true, bubbles: true, cancelable: true,
+    }));
+    /* A publication build never installs the behaviour. */
+    window.MDWB_PUB = { v: 1, menu: true };
+    doc.dispatchEvent(new window.KeyboardEvent("keydown", {
+      key: "V", ctrlKey: true, shiftKey: true, bubbles: true, cancelable: true,
+    }));
+    doc.dispatchEvent(new window.KeyboardEvent("keydown", {
+      key: "V", metaKey: true, shiftKey: true, bubbles: true, cancelable: true,
+    }));
+    window.MDWB_PUB = undefined;
+    input.blur();
+    const untouched = doc.getElementById("content").textContent === before;
+    return calls === 0 && untouched
+      ? ok() : bad("calls=" + calls + " untouched=" + untouched);
+  });
+  check("N07", "help panel lists the paste shortcut; publications drop it", () => {
+    const row = Array.prototype.find.call(
+      doc.querySelectorAll("#help-panel .help-row"),
+      (r) => r.querySelector("span").textContent.trim() === "Paste from clipboard",
+    );
+    const keys = row ? row.textContent.replace(/\s+/g, "") : "";
+    const keysOk = keys.indexOf("Ctrl") !== -1 &&
+      keys.indexOf("Shift") !== -1 && keys.indexOf("V") !== -1;
+    const aria = doc.getElementById("mi-paste").getAttribute("aria-keyshortcuts") || "";
+    const ariaOk = aria.indexOf("Control+Shift+V") !== -1 &&
+      aria.indexOf("Meta+Shift+V") !== -1;
+    W.openMarkdown("# N07\n\nbody");
+    const pub = parse(W.publication.build());
+    const pubRows = Array.prototype.map.call(
+      pub.querySelectorAll("#help-panel .help-row span:first-child"),
+      (s) => s.textContent.trim(),
+    );
+    const dropped = pubRows.indexOf("Paste from clipboard") === -1 &&
+      pubRows.indexOf("Open a file") === -1 &&
+      pubRows.indexOf("Reading settings") !== -1;
+    return !!row && keysOk && ariaOk && dropped
+      ? ok() : bad("row=" + !!row + " keys=" + keysOk + " aria=" + ariaOk +
+                   " dropped=" + dropped);
+  });
+  check("N08", "meta save: empty title clears to Untitled on every surface", () => {
+    W.openMarkdown("# Real Heading\n\nbody");
+    const fb = doc.title === "Real Heading" &&
+      doc.getElementById("header-title").textContent === "Real Heading" &&
+      doc.getElementById("footer-title").textContent === "Real Heading";
+    doc.getElementById("mi-meta").click();
+    doc.getElementById("mf-title").value = "";
+    doc.getElementById("meta-form").dispatchEvent(
+      new window.Event("submit", { bubbles: true, cancelable: true }),
+    );
+    const cleared = doc.title === "Untitled" &&
+      doc.getElementById("header-title").textContent === "Untitled" &&
+      doc.getElementById("footer-title").textContent === "Untitled";
+    const pub = parse(W.publication.build());
+    const pubTitle = pub.querySelector("title").textContent === "Untitled";
+    doc.getElementById("mi-meta").click();
+    const field = doc.getElementById("mf-title");
+    const reopen = field.value === "" && field.placeholder === "Untitled";
+    doc.getElementById("meta-cancel").click();
+    const cur = JSON.parse(window.localStorage.getItem("mdwb:current"));
+    const stored = JSON.parse(
+      window.localStorage.getItem("mdwb:docpref:" + cur.id),
+    ).meta;
+    const storedOk = stored && "title" in stored && stored.title === "";
+    return fb && cleared && pubTitle && reopen && storedOk
+      ? ok() : bad("fb=" + fb + " clr=" + cleared + " pub=" + pubTitle +
+                   " re=" + reopen + " st=" + storedOk);
+  });
+  check("N09", "meta save: captured title drives surfaces, naming, exports", () => {
+    W.openMarkdown("# Doc Title\n\nbody text with words");
+    doc.getElementById("mi-meta").click();
+    doc.getElementById("mf-title").value = "  Custom Book Name  ";
+    doc.getElementById("mf-author").value = "A. Author";
+    doc.getElementById("meta-form").dispatchEvent(
+      new window.Event("submit", { bubbles: true, cancelable: true }),
+    );
+    const surfaces = doc.title === "Custom Book Name" &&
+      doc.getElementById("header-title").textContent === "Custom Book Name" &&
+      doc.getElementById("footer-title").textContent === "Custom Book Name";
+    const named = W.downloadName() === "custom-book-name.md";
+    const pub = parse(W.publication.build());
+    const pubOk = pub.querySelector("title").textContent === "Custom Book Name" &&
+      pub.querySelector('meta[name="author"]').getAttribute("content") === "A. Author";
+    /* The next editor visit shows the captured value in the field. */
+    doc.getElementById("mi-meta").click();
+    const field = doc.getElementById("mf-title");
+    const reopen = field.value === "Custom Book Name" &&
+      field.placeholder === "Custom Book Name";
+    doc.getElementById("meta-cancel").click();
+    return surfaces && named && pubOk && reopen
+      ? ok(W.downloadName())
+      : bad("s=" + surfaces + " name=" + named + " pub=" + pubOk +
+            " re=" + reopen);
+  });
+  check("N10", "cleared author stays cleared; the absent-entry fallback holds", () => {
+    W.openMarkdown(
+      "---\ntitle: FM Title\nauthor: FM Author\n---\n\n# FM Title\n\nbody",
+    );
+    const pub0 = parse(W.publication.build());
+    const fallback = pub0.querySelector('meta[name="author"]') &&
+      pub0.querySelector('meta[name="author"]').getAttribute("content") === "FM Author" &&
+      pub0.querySelector("title").textContent === "FM Title";
+    doc.getElementById("mi-meta").click();
+    doc.getElementById("mf-author").value = "   ";
+    doc.getElementById("meta-form").dispatchEvent(
+      new window.Event("submit", { bubbles: true, cancelable: true }),
+    );
+    const pub1 = parse(W.publication.build());
+    /* Exact capture: the untouched empty title cleared too, so the export
+       reads "Untitled"; the cleared author writes no meta element. */
+    const cleared = pub1.querySelector("title").textContent === "Untitled" &&
+      !pub1.querySelector('meta[name="author"]');
+    return fallback && cleared
+      ? ok() : bad("fb=" + fallback + " clr=" + cleared);
+  });
+
   check("PUB1", "publishable export: 1:1 replica with metadata in head", () => {
     W.openMarkdown("# T\n\nbody text");
     const out = W.publication.build();
@@ -1703,7 +1962,8 @@ setTimeout(() => {
       (s) => s.textContent.trim(),
     );
     const helpClean = !rows.some((t) =>
-      t === "Open a file" || t === "Import, export & strict HTML");
+      t === "Open a file" || t === "Import, export & strict HTML" ||
+      t === "Paste from clipboard");
     const readingRowKept = rows.indexOf("Reading settings") !== -1;
     /* Boot flag mirrors the toggle. */
     const flagOn = withMenu.includes('window.MDWB_PUB = {"v":1,"menu":true}');
@@ -1899,6 +2159,7 @@ setTimeout(() => {
   console.log("v1.7.0 additions (polish): meta-panel spacing/size/colour pass (38px rows, 88px plain-text Description editor, inverted solid Save, space-6 subtext), plain-text publication toggle label, code line numbers + per-block COLLAPSE with fading 88px window, table column floors/caps with hidden-bar drag-to-scroll");
   console.log("v1.8.0 additions: Open-from-url import (meta-panel modal, loading state, http(s)+extension validation, HTML/binary guards, toasts on failure only, always excluded from publications), .mdx imports with preserved download naming + dynamic Download label, toc/findbar mutual exclusion, btn-top below the toc drawer, welcome-paste removal");
   console.log("v1.8.1 additions: Paste from clipboard (doc-menu item, text/type inspection with error toasts, success toast via render) and the Fetch & embed remote media switch (default off; off strips media constructs at import, on rewrites image urls to sanitiser-allowed data uris), both load-path wired (file/url/clipboard/drag) and excluded from publications; Edit HTML metadata regrouped under Print / save as PDF");
+  console.log("v1.8.2 additions: embed allowlist widened to the standard image formats (png/jpg/jpeg/gif/webp/svg+xml/bmp/ico/avif with canonical aliases + svg/avif magic-byte sniffs), Paste-from-clipboard keyboard shortcut (Ctrl/Cmd+Shift+V, toasts, help-panel row, dropped from publications), and exact-capture metadata save (empty field clears the entry, cleared title reads Untitled, captured title applied to toolbar/footer/tab/placeholder/downloads/exports)");
   process.exit(fail + crash > 0 ? 1 : 0);
   }
 }, 150);

@@ -19,7 +19,7 @@
 (function () {
     "use strict";
 
-    var APP_VERSION = "1.8.1";
+    var APP_VERSION = "1.8.2";
     var LS_PREFIX = "mdwb:";
     var MOBILE_QUERY = "(max-width: 720px)";
     var HEAVY_DOC_CHARS = 200 * 1024; /* show a loading state above this */
@@ -1117,9 +1117,11 @@
 
         fileStem: function () {
             if (!App.current) return "document";
+            /* Downloads are named after the effective title — the captured
+               one when metadata was saved (1.8.2). */
             return (
-                App.current.meta.title
-                    .toLowerCase()
+                Meta.effectiveMeta()
+                    .title.toLowerCase()
                     .replace(/[^a-z0-9]+/g, "-")
                     .replace(/^-+|-+$/g, "")
                     .slice(0, 60) || "document"
@@ -1259,8 +1261,9 @@
             "Export publishable HTML", the "Fetch & embed remote media"
             switch and the "Include document menu in publication" switch.
          2. Shortcuts removed from the Help panel AND from the key
-            listeners: Open a file (Ctrl+O) and the Document-menu row. The
-            app skips them when it boots with window.MDWB_PUB set.
+            listeners: Open a file (Ctrl+O), Paste from clipboard
+            (Ctrl/Cmd+Shift+V, 1.8.2) and the Document-menu row. The app
+            skips them when it boots with window.MDWB_PUB set.
          3. Conditional visibility: with "Include document menu in
             publication" off, #btn-docs and #doc-menu are hidden.
          4. The current document travels inside the replica as the same
@@ -1301,7 +1304,11 @@
             "mi-open", "mi-open-url", "mi-paste", "mi-meta", "mi-publish",
             "mi-embed", "mi-pubmenu",
         ],
-        EXCLUDED_HELP_ROWS: ["Open a file", "Import, export & strict HTML"],
+        EXCLUDED_HELP_ROWS: [
+            "Open a file",
+            "Paste from clipboard",
+            "Import, export & strict HTML",
+        ],
 
         /* Upsert one <meta name="…" content="…"> into the replica head. */
         setMeta: function (root, name, content) {
@@ -1400,12 +1407,17 @@
             if (!doc || !App.bootHTML || typeof DOMParser === "undefined")
                 return null;
             var pm = Meta.docMeta();
-            /* Metadata mapping: explicit metadata wins; sensible defaults
-               the app already defines (frontmatter/heading title, frontmatter
-               author) are preserved; nothing is invented. */
-            var title = pm.title || doc.meta.title || "Untitled";
-            var author = pm.author || doc.meta.author || "";
-            var desc = pm.description || "";
+            /* Metadata mapping (1.8.2): an entry present in the store wins
+               — including an explicitly EMPTY one, which clears the field
+               (a cleared title reads "Untitled"); an absent entry falls
+               back to the values the content itself provides. */
+            var title =
+                pm.title !== undefined
+                    ? pm.title || "Untitled"
+                    : doc.meta.title || "Untitled";
+            var author =
+                pm.author !== undefined ? pm.author : doc.meta.author || "";
+            var desc = pm.description !== undefined ? pm.description : "";
             var withMenu = Publication.includeMenu(doc.id);
 
             var root = new DOMParser().parseFromString(
@@ -2388,9 +2400,11 @@
     /* ================= HTML metadata editor (publication) ==================
        A compact dialog for the <head> metadata of the publishable export:
        title, author, description. Values are document state — persisted per
-       document via DocPref — and never touch the Markdown source. Empty
-       fields fall back to values the app already knows (frontmatter title /
-       author, first heading), so nothing is ever invented. */
+       document via DocPref — and never touch the Markdown source. Saving is
+       an exact capture (1.8.2): an empty field clears its entry in the
+       store — a cleared title reads as "Untitled" — and a saved title is
+       applied to every surface that names the document (toolbar, footer,
+       browser tab, this form's placeholder, download naming, exports). */
 
     var Meta = {
         open: false,
@@ -2443,11 +2457,35 @@
                 });
         },
 
-        /* Effective metadata for the current document: explicit entries win,
-           absent ones simply stay absent (the publication renderer applies
-           the fallback chain). */
+        /* Explicit entries for the current document, exactly as stored:
+           present entries (including empty ones) win, absent ones fall
+           back at the consumer. */
         docMeta: function () {
             return (App.current && DocPref.get(App.current.id, "meta", null)) || {};
+        },
+
+        /* Effective metadata for the current document. An entry present in
+           the store wins — including an explicitly EMPTY one, which clears
+           the value (title falls to "Untitled"); an entry absent from the
+           store falls back to what the content itself says (frontmatter /
+           first heading). This is the single source of truth for every
+           surface that names the document (1.8.2). */
+        effectiveMeta: function () {
+            var pm = Meta.docMeta();
+            var doc = App.current;
+            return {
+                title:
+                    pm.title !== undefined
+                        ? pm.title || "Untitled"
+                        : doc
+                          ? doc.meta.title
+                          : "Untitled",
+                author:
+                    pm.author !== undefined
+                        ? pm.author
+                        : (doc && doc.meta.author) || "",
+                description: pm.description !== undefined ? pm.description : "",
+            };
         },
 
         openEditor: function () {
@@ -2471,11 +2509,11 @@
                 if (k === "description") el.textContent = v;
                 else el.value = v;
             });
-            /* Placeholders show the fallback the export would use. */
-            Meta.inputs.title.placeholder = App.current
-                ? App.current.meta.title
-                : "";
-            Meta.inputs.author.placeholder = (App.current && App.current.meta.author) || "";
+            /* Placeholders show the effective value the export would use —
+               a saved or cleared title is reflected here too (1.8.2). */
+            var eff = Meta.effectiveMeta();
+            Meta.inputs.title.placeholder = eff.title;
+            Meta.inputs.author.placeholder = eff.author;
         },
 
         save: function () {
@@ -2483,19 +2521,26 @@
                 Meta.close();
                 return;
             }
+            /* An exact capture: every field is stored as captured, empty
+               ones included — saving with a field emptied CLEARS its entry
+               in the store, overriding any content-derived fallback (and a
+               cleared title reads as "Untitled", 1.8.2). */
             var out = {};
             Meta.FIELDS.forEach(function (k) {
                 var el = Meta.inputs[k];
-                var v = String(
+                out[k] = String(
                     k === "description" ? el.textContent : el.value,
                 )
                     .trim()
                     .slice(0, 300);
-                if (v) out[k] = v;
             });
             DocPref.set(App.current.id, "meta", out);
             Meta.close();
             UI.toast("Metadata saved");
+            /* Every surface that names the document follows the captured
+               title immediately: toolbar, footer, browser tab — and this
+               form's own placeholder the next time it opens. */
+            App.applyTitle(Meta.effectiveMeta().title);
         },
 
         close: function () {
@@ -2807,10 +2852,11 @@
                forms and linked badges, plus raw HTML img/video/audio/
                picture/source/track) are stripped from the source, so the
                document reads and exports as pure local text.
-         on  — every *image* url is fetched once, type-checked by header
-               (with a magic-byte sniff when the server is unhelpful) and
-               rewritten into a base64 data uri, so the images live inside
-               the document and survive every export path.
+         on  — every *image* url is fetched once, type-checked against the
+               standard image formats (1.8.2), with a magic-byte sniff
+               when the server is unhelpful, and rewritten into a base64
+               data uri, so the images live inside the document and
+               survive every export path.
 
        Media-ness is decided by STRUCTURE (the construct the url appears
        in), never by file extension. Fenced code blocks and inline code
@@ -2822,6 +2868,27 @@
     var MediaTools = {
         /* Refuse to inline absurd payloads; oversized images keep their url. */
         EMBED_MAX_BYTES: 25 * 1024 * 1024,
+
+        /* The standard range of image formats the embed pass encodes
+           (1.8.2). The header check matches against this list (aliases
+           like "image/jpg", "image/svg" and "image/ico" included) and
+           resolves to the canonical mime recorded here, so the emitted
+           data uri always carries a type every browser understands. */
+        EMBED_MIMES: {
+            "image/png": "image/png",
+            "image/jpg": "image/jpeg",
+            "image/jpeg": "image/jpeg",
+            "image/gif": "image/gif",
+            "image/webp": "image/webp",
+            "image/svg+xml": "image/svg+xml",
+            "image/svg": "image/svg+xml",
+            "image/bmp": "image/bmp",
+            "image/ico": "image/x-icon",
+            "image/x-icon": "image/x-icon",
+            "image/vnd.microsoft.icon": "image/x-icon",
+            "image/avif": "image/avif",
+            "image/avif-sequence": "image/avif",
+        },
 
         enabled: false,
 
@@ -3202,12 +3269,16 @@
                 });
         },
 
-        /* Content-type first; when it is missing or generic (octet-stream
-           and friends), sniff the magic bytes. A server that answers
-           "text/html" is not an image, no matter what the bytes show. */
+        /* Content-type first, against the standard-format allowlist; when
+           it is missing or generic (octet-stream and friends), sniff the
+           magic bytes. A server that answers "text/html" — or anything
+           else that is not on the list — is not an encodable image, no
+           matter what the bytes show. The returned mime is the canonical
+           type the data uri carries. */
         resolveMime: function (ct, bytes) {
             ct = String(ct || "").split(";")[0].trim().toLowerCase();
-            if (ct.indexOf("image/") === 0) return ct;
+            if (ct && MediaTools.EMBED_MIMES[ct])
+                return MediaTools.EMBED_MIMES[ct];
             var generic =
                 !ct ||
                 ct === "application/octet-stream" ||
@@ -3217,6 +3288,10 @@
             return MediaTools.sniffImage(bytes);
         },
 
+        /* Magic bytes for the binary formats, plus two text/box formats
+           the sniff path gained in 1.8.2: svg is plain markup (an xml
+           prolog or a doctype may precede the <svg root) and avif is an
+           ISO-BMFF "ftyp" box whose brand names the avif family. */
         sniffImage: function (b) {
             if (!b || b.length < 12) return null;
             if (
@@ -3236,6 +3311,26 @@
             if (b[0] === 0x42 && b[1] === 0x4d) return "image/bmp";
             if (b[0] === 0 && b[1] === 0 && b[2] === 1 && b[3] === 0)
                 return "image/x-icon";
+            if (
+                b[4] === 0x66 && b[5] === 0x74 && b[6] === 0x79 &&
+                b[7] === 0x70 /* "ftyp" */ &&
+                ((b[8] === 0x61 && b[9] === 0x76 && b[10] === 0x69 &&
+                  b[11] === 0x66) /* avif */ ||
+                 (b[8] === 0x61 && b[9] === 0x76 && b[10] === 0x69 &&
+                  b[11] === 0x73) /* avis */ ||
+                 (b[8] === 0x61 && b[9] === 0x76 && b[10] === 0x30 &&
+                  b[11] === 0x31)) /* av01 */
+            )
+                return "image/avif";
+            var head = "";
+            for (var i = 0; i < Math.min(b.length, 256); i++)
+                head += String.fromCharCode(b[i]);
+            if (
+                /^\s*(?:<\?xml[\s\S]{0,200}?\?>\s*)?(?:<!DOCTYPE\s+svg[^>]*>\s*)?<svg[\s>/]/i.test(
+                    head,
+                )
+            )
+                return "image/svg+xml";
             return null;
         },
 
@@ -3317,6 +3412,19 @@
         current: null,
         pendingFile: null,
         persistFailed: false,
+
+        /* True while the focus sits in an editable control — the global
+           key layer must never intercept typing (inputs, textareas and
+           contenteditable hosts, e.g. the find field or the metadata
+           description editor). */
+        typingTarget: function (t) {
+            return (
+                !!t &&
+                (t.tagName === "INPUT" ||
+                    t.tagName === "TEXTAREA" ||
+                    t.isContentEditable)
+            );
+        },
 
         cacheDom: function () {
             App.dom = {
@@ -3514,9 +3622,9 @@
                 App.syncDownloadLabel();
 
                 if (origin === "restored")
-                    UI.toast('Restored "' + meta.title + '"');
+                    UI.toast('Restored "' + Meta.effectiveMeta().title + '"');
                 else if (origin === "imported" || origin === "pasted")
-                    UI.toast('Opened "' + meta.title + '"');
+                    UI.toast('Opened "' + Meta.effectiveMeta().title + '"');
                 /* origin "url" stays silent by design: the dialog closing is
                    the success signal (1.8.0). */
             } catch (err) {
@@ -3550,10 +3658,18 @@
             return meta;
         },
 
+        applyTitle: function (t) {
+            /* Every chrome surface that names the document in one place:
+               browser tab, toolbar and footer (1.8.2). */
+            document.title = t;
+            App.dom.headerTitle.textContent = t;
+            App.dom.footerTitle.textContent = t;
+        },
+
         applyDoc: function (doc) {
-            document.title = doc.meta.title;
-            App.dom.headerTitle.textContent = doc.meta.title;
-            App.dom.footerTitle.textContent = doc.meta.title;
+            /* A document with saved metadata shows its captured title from
+               the moment it loads — restored docs included (1.8.2). */
+            App.applyTitle(Meta.effectiveMeta().title);
             App.dom.footerTitle.hidden = false;
             App.dom.footerSep.hidden = false;
             if (doc.meta.lang)
@@ -4297,6 +4413,20 @@
                         }
                         return;
                     }
+                    if (k === "v" && e.shiftKey) {
+                        /* Paste from clipboard (1.8.2): the same guarded
+                           flow as the doc-menu item — every outcome, from
+                           a rendered document to a denied clipboard, is
+                           announced with a toast. Publications drop the
+                           Help row and skip the listener entirely, and
+                           inside an editable control the browser's own
+                           paste-as-plain-text stays native. */
+                        if (!window.MDWB_PUB && !App.typingTarget(e.target)) {
+                            e.preventDefault();
+                            App.pasteFromClipboard();
+                        }
+                        return;
+                    }
                     return; /* other browser shortcuts stay untouched */
                 }
                 if (e.ctrlKey || e.metaKey || e.altKey) return;
@@ -4338,14 +4468,7 @@
                 }
 
                 if (e.key.length !== 1) return;
-                var t = e.target;
-                if (
-                    t &&
-                    (t.tagName === "INPUT" ||
-                        t.tagName === "TEXTAREA" ||
-                        t.isContentEditable)
-                )
-                    return;
+                if (App.typingTarget(e.target)) return;
                 if (e.key === "/") {
                     if (App.state === "reading" && !Find.isOpen) {
                         e.preventDefault();
@@ -4707,6 +4830,15 @@
             },
             embed: function (md) {
                 return MediaTools.embedImages(md);
+            },
+            /* Harness hook (1.8.2): the content-type allowlist + magic-byte
+               sniffer that decides what may become a data uri. */
+            resolveMime: function (ct, bytes) {
+                try {
+                    return MediaTools.resolveMime(ct, new Uint8Array(bytes));
+                } catch (e) {
+                    return null;
+                }
             },
             enabled: function () {
                 return MediaTools.enabled;

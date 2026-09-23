@@ -258,7 +258,7 @@
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
                 Open from url…
             </button>
-            <button class="menu-item" id="mi-paste" role="menuitem" type="button">
+            <button class="menu-item" id="mi-paste" role="menuitem" type="button" aria-keyshortcuts="Control+Shift+V Meta+Shift+V">
                 <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path></svg>
                 Paste from clipboard
             </button>
@@ -381,6 +381,7 @@
                 <div class="help-row"><span>Previous match</span><span class="keys"><span class="kbd">Shift</span><span class="kbd">Enter</span></span></div>
                 <div class="help-group">Document</div>
                 <div class="help-row"><span>Open a file</span><span class="keys"><span class="kbd">Ctrl</span><span class="kbd">O</span></span></div>
+                <div class="help-row"><span>Paste from clipboard</span><span class="keys"><span class="kbd">Ctrl</span><span class="kbd">Shift</span><span class="kbd">V</span></span></div>
                 <div class="help-row"><span>Import, export &amp; strict HTML</span><span class="keys"><span class="kbd">Document menu</span></span></div>
                 <div class="help-row"><span>Reading settings</span><span class="keys"><span class="kbd">Aa</span></span></div>
             </div>
@@ -463,7 +464,7 @@
                             </svg>
                         </button>
                     </div>
-                    <p class="meta-sub">Written into the <code>&lt;head&gt;</code> of the publishable HTML export. Leave a field empty to fall back to the document's own values.</p>
+                    <p class="meta-sub">Written into the <code>&lt;head&gt;</code> of the publishable HTML export. Saving an empty field clears that entry — an empty title reads as “Untitled”.</p>
                 </div>
                 <form id="meta-form" novalidate>
                     <div class="meta-card">

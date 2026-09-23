@@ -23,8 +23,10 @@ There are a few ways to load a book:
 2. Drag a `.md`, `.markdown`, `.mdx` or `.txt` file anywhere onto this page.
 3. Choose **Open from url…** in the document menu to fetch a `.md`,
    `.markdown` or `.mdx` file straight from the web.
-4. Choose **Paste from clipboard** to render whatever Markdown text you
-   last copied — no file needed.
+4. Choose **Paste from clipboard** — or press
+   <kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>Shift</kbd>+<kbd>V</kbd> — to render
+   whatever Markdown text you last copied, with a toast confirming the
+   outcome; no file needed.
 
 Whatever the route, the document you are reading stays on this device, so a
 refresh or an accidental close is never a disaster.
@@ -37,7 +39,10 @@ video and audio urls out of the source, so the document reads — and
 exports — as pure local text. **On** downloads every image the moment the
 document is imported and rewrites it as data embedded in the file itself,
 so the images survive every export path: Download .md, both HTML exports
-and print. Either way the decision is made at import time and the choice
+and print. The standard image formats are encoded — png, jpg/jpeg, gif,
+webp, svg, bmp, ico and avif — recognised by content type with a
+magic-byte fallback for unhelpfully-served files, never by file
+extension. Either way the decision is made at import time and the choice
 is remembered on this device.
 
 ## What the reader supports
@@ -179,8 +184,9 @@ stays offline:
   "Export publishable HTML" are removed from its document menu, and the
   "Fetch & embed remote media" and "Include document menu in publication"
   switches are gone, so a publication never carries an import, network or
-  metadata entry point. The open-file (Ctrl+O) and document-menu rows
-  disappear from its shortcut map and key listeners. Everything else —
+  metadata entry point. The open-file (Ctrl+O), paste-from-clipboard
+  (Ctrl/Cmd+Shift+V) and document-menu rows disappear from its shortcut
+  map and key listeners. Everything else —
   reading settings, search, the outline, printing — behaves exactly as it
   does here.
 - **Print / save as PDF** — paper follows your reading settings (theme,
@@ -188,7 +194,11 @@ stays offline:
   with external links expanded so URLs survive on paper.
 
 **Edit HTML metadata** fills in the page title, author and description
-written into the exported head, and the **Include document menu in
+written into the exported head. Saving captures the form exactly as shown:
+an empty field clears its entry, an emptied title reads as *Untitled*, and
+a captured title is applied everywhere the document is named — the
+toolbar, the footer, the browser tab, the form's own placeholder and the
+downloads — and it survives a refresh. The **Include document menu in
 publication** switch decides whether the published replica shows the
 document button and its menu at all — on, it reads like this app; off, the
 button and menu are hidden entirely.
