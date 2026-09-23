@@ -63,7 +63,7 @@
       align-items: center;
       gap: 0.5rem;
       color: var(--faint);
-      font-size: 0.9rem;
+      font-size: 0.8125rem;
       margin-bottom: 0.75rem;
     }
 
@@ -97,12 +97,24 @@
 
     .tagline {
       color: var(--muted);
-      font-size: 1.1rem;
-      /*max-width: 38ch;*/
+      font-size: 0.875rem;
+      max-width: 100%;
       line-height: 1.5;
     }
 
     /* ---- Directory Table ---- */
+
+    .dir-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.75rem;
+      color: var(--faint);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      padding-bottom: 0.5rem;
+      border-bottom: 1px solid var(--border);
+    }
 
     .file-list {
       list-style: none;
@@ -136,8 +148,13 @@
       margin-bottom: 0.35rem;
     }
 
+    .perm {
+      color: var(--faint);
+      font-size: 0.75rem;
+    }
+
     .file-name {
-      font-size: 1.1rem;
+      font-size: 1rem;
       font-weight: 600;
       color: var(--strong);
       text-decoration: none;
@@ -150,9 +167,14 @@
 
     .file-desc {
       color: var(--muted);
-      font-size: 1rem;
+      font-size: 0.84375rem;
       margin-bottom: 0.4rem;
       line-height: 1.5;
+    }
+
+    .file-path {
+      color: var(--faint);
+      font-size: 0.75rem;
     }
 
     .file-actions {
@@ -231,10 +253,9 @@
 
     <header>
       <div class="path-line">
-        <span class="prompt">$</span>
-        <a href="https://github.com/elasto-c">~/elasto-c</a><span>/</span><a href="https://github.com/elasto-c/vibe-overflows">vibe-overflows</a>
+        <a href="https://github.com/elasto-c/vibe-overflows">github.com/elasto-c/vibe-overflows</a>
       </div>
-      <h1>vibe-overflows<span class="slash"></span></h1>
+      <h1>vibe-overflows<span class="slash">/</span></h1>
       <p class="tagline">Apps, tools, and artifacts created in chat sessions that overflowed into code.</p>
     </header>
 
@@ -244,9 +265,10 @@
         <li class="file-row">
           <div class="file-info">
             <div class="file-meta">
-              <a href="https://github.com/elasto-c/vibe-overflows/tree/main/overflows/markdown-webbook" class="file-name">overflows/markdown-webbook/</a>
+              <a href="./overflows/markdown-webbook/dist/markdown_webbook.html" class="file-name">markdown-webbook/</a>
             </div>
             <p class="file-desc">Single-file Markdown reader and publisher — Markdown in, one self-contained HTML file out.</p>
+            <div class="file-path">overflows/markdown-webbook</div>
           </div>
           <div class="file-actions">
             <a href="./overflows/markdown-webbook/dist/markdown_webbook.html" class="btn btn-live">live ↗</a>
@@ -257,7 +279,6 @@
     </main>
 
     <footer>
-      <!--<a href="https://github.com/elasto-c/vibe-overflows">github.com/elasto-c/vibe-overflows</a>-->
     </footer>
 
   </div>
