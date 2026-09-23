@@ -1452,7 +1452,7 @@ setTimeout(() => {
     const embedOk = sep && sep.tagName === "HR" && sep.nextElementSibling === embed &&
       embed.nextElementSibling === pub &&
       embed.getAttribute("aria-checked") === "false" &&
-      /Fetch & embed remote media/.test(embed.textContent) &&
+      /Embed remote media/.test(embed.textContent) &&
       !!embed.querySelector(".pub-switch .pub-knob") &&
       !!embed.querySelector(".mi-label");
     const css = /#mi-embed \.mi-label,\s*#mi-pubmenu \.mi-label\s*{/.test(html);
@@ -1519,52 +1519,46 @@ setTimeout(() => {
     return imgOk && linkSafe
       ? ok() : bad("img=" + imgOk + " href=" + (a ? a.getAttribute("href") : "none"));
   });
-  checkA("M04", "embed pass: image urls become data uris; failures keep urls", async (Wl) => {
+  checkA("M04", "embed pass: rendered images become data uris; failures keep urls", async (Wl) => {
+    /* 1.8.5: the automatic path — openMarkdown renders, the pass walks
+       the compiled DOM, captures each remote img through the (faked)
+       canvas and rewrites DOM, source and storage; the url the fake
+       env rejects keeps its remote form everywhere. */
     Wl.media.setEnabled(true);
-    const png = new Uint8Array([
-      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0,
-    ]);
-    const resp = (buf, ct) => ({
-      ok: true, status: 200, statusText: "OK",
-      headers: { get: (k) => (/content-type/i.test(k) ? ct : null) },
-      arrayBuffer: () => Promise.resolve(buf),
-    });
-    window.fetch = (u) => {
-      if (/fail/.test(u)) return Promise.reject(new TypeError("network down"));
-      if (/nope/.test(u)) return Promise.resolve(resp(new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]), "text/html"));
-      return Promise.resolve(resp(png, "image/png"));
-    };
-    const src = [
-      "# M", "",
-      "![a](https://img/one.png)", "",
-      "![b][p2]", "",
-      "[p2]: https://img/two.png \"T\"", "",
-      "<img src=\"https://img/three.png\" alt=\"c\">", "",
-      "![bad](https://img/fail.png)", "",
-      "![bin](https://img/nope.png)",
-    ].join("\n");
-    const out = await Wl.media.prepare(src);
-    const uris = out.match(/data:image\/png;base64,/g) || [];
-    /* 1.8.3: a recognised .png ending embeds outright — even the junk
-       payload served as text/html (nope.png) — while the network-failed
-       url keeps its original form (fail.png). */
-    const okEmbed = uris.length === 4 &&
-      out.indexOf("![a](data:image/png;base64,") !== -1 &&
-      out.indexOf("[p2]: data:image/png;base64,") !== -1 &&
-      out.indexOf("\"T\"") !== -1 &&
-      out.indexOf('src="data:image/png;base64,') !== -1 &&
-      out.indexOf("![bad](https://img/fail.png)") !== -1 &&
-      out.indexOf("![bin](data:image/png;base64,") !== -1;
-    /* A generic content-type no longer blocks a recognised extension
-       (four.png embeds via the extension map; the extensionless sniff
-       fallback is pinned by N13). */
-    window.fetch = () => Promise.resolve(resp(png, "application/octet-stream"));
-    const out2 = await Wl.media.prepare("![s](https://img/four.png)");
-    const sniffed = out2.indexOf("![s](data:image/png;base64,") === 0;
-    Wl.media.setEnabled(false);
-    return okEmbed && sniffed
-      ? ok("uris=" + uris.length)
-      : bad("embed=" + okEmbed + " sniff=" + sniffed + " out=" + out.slice(0, 300));
+    const restore = Wl.media.env(fakeEnv(/^https:\/\/img\/fail\.png$/));
+    try {
+      const src = [
+        "# M", "",
+        "![a](https://img/one.png)", "",
+        "![b][p2]", "",
+        "[p2]: https://img/two.png \"T\"", "",
+        "<img src=\"https://img/three.png\" alt=\"c\">", "",
+        "![bad](https://img/fail.png)", "",
+      ].join("\n");
+      Wl.openMarkdown(src);
+      await drain(30);
+      const content = doc.getElementById("content");
+      const srcs = Array.from(content.querySelectorAll("img"))
+        .map((i) => i.getAttribute("src"));
+      const captured = srcs.filter((s) =>
+        s.indexOf("data:image/png;base64,FAKE=") === 0).length;
+      const kept = srcs.some((s) => s === "https://img/fail.png");
+      const rec = JSON.parse(
+        window.localStorage.getItem("mdwb:current") || "null");
+      const sourceOk = !!rec && rec.source
+        .indexOf("![a](data:image/png;base64,FAKE=") !== -1 &&
+        rec.source.indexOf("[p2]: data:image/png;base64,FAKE=") !== -1 &&
+        rec.source.indexOf("\"T\"") !== -1 &&
+        rec.source.indexOf("src=\"data:image/png;base64,FAKE=") !== -1 &&
+        rec.source.indexOf("![bad](https://img/fail.png)") !== -1;
+      return captured === 3 && kept && sourceOk
+        ? ok("3 captured, 1 kept; source + storage rewritten")
+        : bad("captured=" + captured + " kept=" + kept +
+              " srcs=" + JSON.stringify(srcs));
+    } finally {
+      Wl.media.setEnabled(false);
+      restore();
+    }
   });
   checkA("M05", "clipboard paste: text renders, media pass runs, success toast", async (Wl) => {
     Wl.openMarkdown("# Seed\n\nbefore paste");
@@ -1657,192 +1651,26 @@ setTimeout(() => {
             " kept=" + kept);
   });
 
-  /* ---------------- v1.8.2: formats, paste shortcut, meta save ---------------- */
+  /* ---------------- v1.8.5: native capture embed (no fetch) ----------------
+     jsdom decodes no images and implements no canvas, so every embed
+     check swaps the pass's environment adapters for deterministic
+     fakes: a loader that resolves "decoded" probes (or rejects for
+     urls matching the fail pattern) and a canvas whose toPng answers
+     a fixed data uri. The pipeline under test — DOM detection, probe
+     guards, pool, DOM swap, masked source rewrite, persistence — is
+     the production code. */
 
-  check("N01", "embed mime allowlist: standard formats, canonical aliases", () => {
-    const rm = W.media.resolveMime;
-    const png = [0x89, 0x50, 0x4e, 0x47, 0, 0, 0, 0, 0, 0, 0, 0];
-    const canonical = [
-      ["image/png", "image/png"],
-      ["image/jpg", "image/jpeg"],
-      ["image/jpeg", "image/jpeg"],
-      ["image/gif", "image/gif"],
-      ["image/webp", "image/webp"],
-      ["image/svg+xml", "image/svg+xml"],
-      ["image/svg", "image/svg+xml"],
-      ["image/bmp", "image/bmp"],
-      ["image/ico", "image/x-icon"],
-      ["image/x-icon", "image/x-icon"],
-      ["image/vnd.microsoft.icon", "image/x-icon"],
-      ["image/avif", "image/avif"],
-      ["image/avif-sequence", "image/avif"],
-    ].every(([ct, want]) => rm(ct, png) === want);
-    const params = rm("image/svg+xml; charset=utf-8", png) === "image/svg+xml";
-    const ci = rm("IMAGE/PNG", png) === "image/png";
-    /* 1.8.4: the bytes are the final authority — a foreign header no longer
-       vetoes a real image payload; junk payloads still match nothing. */
-    const junk = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14];
-    const foreign = rm("image/tiff", junk) === null &&
-      rm("text/html", junk) === null && rm("application/pdf", junk) === null;
-    const bytesWin = rm("text/html", png) === "image/png" &&
-      rm("application/pdf", png) === "image/png";
-    return canonical && params && ci && foreign && bytesWin
-      ? ok() : bad("canon=" + canonical + " params=" + params +
-                   " ci=" + ci + " foreign=" + foreign + " bytes=" + bytesWin);
-  });
-  check("N02", "magic-byte sniff gained svg + avif; binaries regress-none", () => {
-    const rm = W.media.resolveMime;
-    const bytes = (s) => Array.prototype.map.call(s, (c) => c.charCodeAt(0));
-    const svgXml = bytes('<?xml version="1.0"?><svg xmlns="http://www.w3.org/2000/svg"></svg>');
-    const svgBare = bytes("<svg xmlns='http://www.w3.org/2000/svg'><path/></svg>");
-    const svgDoc = bytes("<!DOCTYPE svg> <svg><!-- x --></svg>");
-    const svgCap = bytes("<SVG/> Paddington"); /* 13 chars, case-insensitive root */
-    const avif = [0, 0, 0, 0, 0x66, 0x74, 0x79, 0x70, 0x61, 0x76, 0x69, 0x66, 0, 0, 0, 0];
-    const avis = [0, 0, 0, 0, 0x66, 0x74, 0x79, 0x70, 0x61, 0x76, 0x69, 0x73, 0, 0, 0, 0];
-    const av01 = [0, 0, 0, 0, 0x66, 0x74, 0x79, 0x70, 0x61, 0x76, 0x30, 0x31, 0, 0, 0, 0];
-    const mp4 = [0, 0, 0, 0x18, 0x66, 0x74, 0x79, 0x70, 0x6d, 0x70, 0x34, 0x32]; /* ftypmp42 */
-    const ico = [0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0];
-    const bmp = [0x42, 0x4d, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
-    const html = bytes("<html><body>nope</body></html>");
-    const svgOk = rm("", svgXml) === "image/svg+xml" &&
-      rm("", svgBare) === "image/svg+xml" && rm("", svgDoc) === "image/svg+xml" &&
-      rm("", svgCap) === "image/svg+xml";
-    const avifOk = rm("", avif) === "image/avif" &&
-      rm("", avis) === "image/avif" && rm("", av01) === "image/avif";
-    const mp4Rejected = rm("", mp4) === null;
-    const bins = rm("", ico) === "image/x-icon" && rm("", bmp) === "image/bmp";
-    const notFooled = rm("", html) === null;
-    return svgOk && avifOk && mp4Rejected && bins && notFooled
-      ? ok() : bad("svg=" + svgOk + " avif=" + avifOk +
-                   " mp4=" + !mp4Rejected + " bins=" + bins + " html=" + !notFooled);
-  });
-  checkA("N03", "embed pass encodes svg + avif end-to-end", async (Wl) => {
-    Wl.media.setEnabled(true);
-    const svgStr = '<svg xmlns="http://www.w3.org/2000/svg"><rect width="4" height="4"/></svg>';
-    const svgBytes = new Uint8Array(
-      Array.prototype.map.call(svgStr, (c) => c.charCodeAt(0)),
-    );
-    const avifBytes = new Uint8Array(
-      [0, 0, 0, 0, 0x66, 0x74, 0x79, 0x70, 0x61, 0x76, 0x69, 0x66, 0, 0, 0, 0],
-    );
-    const resp = (buf, ct) => ({
-      ok: true, status: 200, statusText: "OK",
-      headers: { get: (k) => (/content-type/i.test(k) ? ct : null) },
-      arrayBuffer: () => Promise.resolve(buf),
-    });
-    window.fetch = (u) => /svg/.test(u)
-      ? Promise.resolve(resp(svgBytes, "application/octet-stream"))
-      : Promise.resolve(resp(avifBytes, "image/avif"));
-    const out = await Wl.media.prepare(
-      "![v](https://img/logo.svg) and ![a](https://img/pic.avif)",
-    );
-    const svgOk = out.indexOf("![v](data:image/svg+xml;base64,") === 0;
-    const avifOk = out.indexOf("![a](data:image/avif;base64,") !== -1;
-    Wl.media.setEnabled(false);
-    return svgOk && avifOk
-      ? ok(out.slice(0, 60))
-      : bad("svg=" + svgOk + " avif=" + avifOk + " out=" + out.slice(0, 120));
+  const fakeEnv = (fail) => ({
+    loadImage: (u) => (fail && fail.test(u))
+      ? Promise.reject(new Error("image load blocked"))
+      : Promise.resolve({ naturalWidth: 8, naturalHeight: 8 }),
+    makeCanvas: () => ({
+      drawImage() {},
+      toPng: () => "data:image/png;base64,FAKE=",
+    }),
   });
 
-  /* ---------------- v1.8.3: extension-first identification ---------------- */
-
-  check("N11", "extension-first identification: standard endings map outright", () => {
-    const em = W.media.extMime;
-    const canon = [
-      ["https://x/pic.png", "image/png"],
-      ["https://x/pic.jpg", "image/jpeg"],
-      ["https://x/pic.jpeg", "image/jpeg"],
-      ["https://x/pic.gif", "image/gif"],
-      ["https://x/pic.webp", "image/webp"],
-      ["https://x/pic.svg", "image/svg+xml"],
-      ["https://x/pic.bmp", "image/bmp"],
-      ["https://x/pic.ico", "image/x-icon"],
-      ["https://x/pic.avif", "image/avif"],
-    ].every(([u, want]) => em(u) === want);
-    const cased = em("https://x/LOGO.SVG") === "image/svg+xml" &&
-      em("HTTPS://X/PIC.PNG") === "image/png";
-    const query = em("https://x/pic.svg?v=3&dl=1#frag") === "image/svg+xml";
-    const multidot = em("https://x/a.b/photo.min.png") === "image/png";
-    const unknown = em("https://x/pic.tiff") === null &&
-      em("https://x/pic.svgz") === null &&
-      em("https://x/picture") === null &&
-      em("https://x/dir.ext/pic") === null &&
-      em("https://x/pic.svg.") === null;
-    return canon && cased && query && multidot && unknown
-      ? ok("svg->svg+xml, ico->x-icon, jpg==jpeg")
-      : bad("canon=" + canon + " cased=" + cased + " query=" + query +
-            " multi=" + multidot + " unknown=" + unknown);
-  });
-  checkA("N12", "recognised extension embeds whatever the header claims", async (Wl) => {
-    Wl.media.setEnabled(true);
-    const prevFetch = window.fetch;
-    const svgStr = '<svg xmlns="http://www.w3.org/2000/svg"><rect width="4" height="4"/></svg>';
-    const svgBytes = new Uint8Array(
-      Array.prototype.map.call(svgStr, (c) => c.charCodeAt(0)),
-    );
-    const resp = (buf, ct) => ({
-      ok: true, status: 200, statusText: "OK",
-      headers: { get: (k) => (/content-type/i.test(k) ? ct : null) },
-      arrayBuffer: () => Promise.resolve(buf),
-    });
-    /* The 1.8.2 bug: a .svg url answered as text/xml was stranded as a
-       remote url. Extension-first embeds it; a foreign text/html header
-       is likewise overridden by the recognised ending. */
-    window.fetch = (u) => /figure\.svg/.test(u)
-      ? Promise.resolve(resp(svgBytes, "text/xml"))
-      : Promise.resolve(resp(svgBytes, "text/html"));
-    const out = await Wl.media.prepare(
-      "![s](https://img/figure.svg) and ![h](https://img/cover.svg)",
-    );
-    const xmlOk = out.indexOf("![s](data:image/svg+xml;base64,") === 0;
-    const htmlOk = out.indexOf("![h](data:image/svg+xml;base64,") !== -1;
-    Wl.media.setEnabled(false);
-    window.fetch = prevFetch;
-    return xmlOk && htmlOk
-      ? ok("text/xml + text/html both embedded via .svg")
-      : bad("xml=" + xmlOk + " html=" + htmlOk + " out=" + out.slice(0, 120));
-  });
-  checkA("N13", "unrecognised extension falls back to headers, then the bytes", async (Wl) => {
-    Wl.media.setEnabled(true);
-    const prevFetch = window.fetch;
-    const svgStr = '<svg xmlns="http://www.w3.org/2000/svg"><rect width="4" height="4"/></svg>';
-    const svgBytes = new Uint8Array(
-      Array.prototype.map.call(svgStr, (c) => c.charCodeAt(0)),
-    );
-    const htmlDoc = "<!DOCTYPE html><html><body>nope</body></html>";
-    const htmlBytes = new Uint8Array(
-      Array.prototype.map.call(htmlDoc, (c) => c.charCodeAt(0)),
-    );
-    const resp = (buf, ct) => ({
-      ok: true, status: 200, statusText: "OK",
-      headers: { get: (k) => (/content-type/i.test(k) ? ct : null) },
-      arrayBuffer: () => Promise.resolve(buf),
-    });
-    window.fetch = (u) => /rawbin/.test(u)
-      ? Promise.resolve(resp(svgBytes, "application/octet-stream"))
-      : /note/.test(u)
-        ? Promise.resolve(resp(svgBytes, "text/html"))
-        : Promise.resolve(resp(htmlBytes, "text/html"));
-    const out = await Wl.media.prepare(
-      "![r](https://img/rawbin) and ![n](https://img/note) and ![p](https://img/page)",
-    );
-    const sniffOk = out.indexOf("![r](data:image/svg+xml;base64,") === 0;
-    /* 1.8.4: the bytes override a foreign header — a real svg shipped as
-       text/html embeds, while an actual html page still keeps its url. */
-    const bytesWin = out.indexOf("![n](data:image/svg+xml;base64,") !== -1;
-    const pageKept = out.indexOf("![p](https://img/page)") !== -1 &&
-      out.indexOf("![p](data:") === -1;
-    Wl.media.setEnabled(false);
-    window.fetch = prevFetch;
-    return sniffOk && bytesWin && pageKept
-      ? ok("octet-stream + text/html svg bytes embed; html page kept")
-      : bad("sniff=" + sniffOk + " bytes=" + bytesWin + " kept=" + pageKept +
-            " out=" + out.slice(0, 140));
-  });
-
-  /* ---------------- v1.8.4: AST-driven embed + repro cases ---------------- */
-
-  check("N14", "AST detection: every parsed image node is collected", () => {
+  check("N01", "DOM detection: every rendered remote image is collected", () => {
     const src = [
       "# K", "",
       "![plain](https://x/a.png)",
@@ -1858,6 +1686,7 @@ setTimeout(() => {
       "| ![tabled](https://x/h.png) |", "",
       "| --- |", "",
       "<img src=\"https://x/i.png\" alt=\"raw\">", "",
+      "![dup](https://x/a.png)", "",
       "`![code](https://x/skip1.png)`", "",
       B, "![fenced](https://x/skip2.png)", B, "",
       "    ![indented](https://x/skip3.png)", "",
@@ -1865,7 +1694,8 @@ setTimeout(() => {
       "![rel](/local.png)", "",
       "[link only](https://x/j.png)", "",
     ].join("\n");
-    const urls = W.media.collect(src);
+    W.openMarkdown(src);
+    const urls = W.media.collect(doc.getElementById("content"));
     const want = ["https://x/a.png", "https://x/b.png", "https://x/c(1).png",
       "https://x/d.svg", "https://x/e.png", "https://x/f.png",
       "https://x/g.png", "https://x/h.png", "https://x/i.png",
@@ -1875,75 +1705,273 @@ setTimeout(() => {
       u !== "https://x/skip1.png" && u !== "https://x/skip2.png" &&
       u !== "https://x/skip3.png" && u !== "https://x/j.png" &&
       u !== "/local.png" && u.indexOf("data:") !== 0);
-    return !missing.length && noJunk
+    const deduped = urls.filter((u) => u === "https://x/a.png").length === 1;
+    return !missing.length && noJunk && deduped
       ? ok("collected " + urls.length +
-           " urls incl. paren/multi-line/reference/img-src nesting")
+           " urls incl. paren/multi-line/reference/img-src nesting; code, data, relative and link-only excluded; duplicates once")
       : bad("missing=" + JSON.stringify(missing) +
-            " junk=" + JSON.stringify(urls));
+            " urls=" + JSON.stringify(urls));
   });
-  checkA("N15", "repro: wikimedia .PNG and usefresh .svg both embed", async (Wl) => {
+
+  checkA("N02", "capture: DOM swap, badge links, code masking, summary", async (Wl) => {
     Wl.media.setEnabled(true);
-    const prevFetch = window.fetch;
-    const svgStr = '<svg xmlns="http://www.w3.org/2000/svg"><rect width="8" height="8"/></svg>';
-    const svgBytes = new Uint8Array(
-      Array.prototype.map.call(svgStr, (c) => c.charCodeAt(0)),
-    );
-    const png = new Uint8Array([
-      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0,
-    ]);
-    const resp = (buf, ct) => ({
-      ok: true, status: 200, statusText: "OK",
-      headers: { get: (k) => (/content-type/i.test(k) ? ct : null) },
-      arrayBuffer: () => Promise.resolve(buf),
+    const restore = Wl.media.env(fakeEnv(/^https:\/\/img\/fail\.png$/));
+    try {
+      const src = [
+        "# S", "",
+        "![a](https://img/one.png)", "",
+        "[![badge](https://img/badge.png)](https://img/badge.png)", "",
+        "![bad](https://img/fail.png)", "",
+        B, "documented: ![doc](https://img/one.png)", B, "",
+        "![d](data:image/png;base64,iVBOR)", "",
+      ].join("\n");
+      Wl.openMarkdown(src);
+      await drain(30);
+      const content = doc.getElementById("content");
+      const srcs = Array.from(content.querySelectorAll("img"))
+        .map((i) => i.getAttribute("src"));
+      const badgeLink = content.querySelector("a[href^=\"data:image/png\"]");
+      const failKept = srcs.some((s) => s === "https://img/fail.png");
+      const dataUntouched = srcs.some((s) =>
+        s === "data:image/png;base64,iVBOR");
+      const rec = JSON.parse(
+        window.localStorage.getItem("mdwb:current") || "null");
+      const fenceAlive = !!rec && rec.source
+        .indexOf("![doc](https://img/one.png)") !== -1;
+      /* Direct path on a fresh host: the summary numbers, and the badge
+         markdown rewritten in source (image + link target). */
+      const host = doc.createElement("div");
+      host.innerHTML = Wl.render(src);
+      const sum = await Wl.media.embed(host, { source: src });
+      const sumSource = sum.source || "";
+      const domOk = srcs.filter((s) =>
+        s.indexOf("data:image/png;base64,FAKE=") === 0).length === 2 &&
+        !!badgeLink && failKept && dataUntouched;
+      const sumOk = sum.total === 3 && sum.captured === 2 && sum.kept === 1 &&
+        sumSource.indexOf("[![badge](data:image/png;base64,FAKE=") !== -1 &&
+        sumSource.indexOf(")](data:image/png;base64,FAKE=") !== -1 &&
+        sumSource.indexOf("![bad](https://img/fail.png)") !== -1 &&
+        fenceAlive;
+      return domOk && sumOk
+        ? ok("2 captured + badge link swapped; fail kept; fence untouched")
+        : bad("dom=" + JSON.stringify({ srcs, badge: !!badgeLink }) +
+              " sum=" + JSON.stringify(sum).slice(0, 200));
+    } finally {
+      Wl.media.setEnabled(false);
+      restore();
+    }
+  });
+
+  checkA("N03", "graceful degradation: failing captures never break the flow", async (Wl) => {
+    Wl.media.setEnabled(true);
+    const restore = Wl.media.env(fakeEnv(/./)); /* everything fails */
+    try {
+      const src = "# G\n\n![x](https://img/x.png) and <img src=\"https://img/y.png\">";
+      Wl.openMarkdown(src);
+      await drain(30);
+      const content = doc.getElementById("content");
+      const rendered = content.textContent.indexOf("G") !== -1;
+      const srcs = Array.from(content.querySelectorAll("img"))
+        .map((i) => i.getAttribute("src"));
+      const allRemote = srcs.every((s) => /^https?:\/\//.test(s));
+      const rec = JSON.parse(
+        window.localStorage.getItem("mdwb:current") || "null");
+      const sourceIntact = !!rec && rec.source === src;
+      const host = doc.createElement("div");
+      host.innerHTML = Wl.render(src);
+      const sum = await Wl.media.embed(host, { source: src });
+      return rendered && allRemote && sourceIntact &&
+        sum.total === 2 && sum.captured === 0 && sum.kept === 2
+        ? ok("urls kept, source byte-intact, render flow unaffected")
+        : bad("rendered=" + rendered + " allRemote=" + allRemote +
+              " intact=" + sourceIntact + " sum=" + JSON.stringify(sum));
+    } finally {
+      Wl.media.setEnabled(false);
+      restore();
+    }
+  });
+
+  /* ---------------- v1.8.5: capture guards (idempotence, caps) ------------- */
+
+  checkA("N11", "idempotence: a captured document re-imports as a no-op", async (Wl) => {
+    Wl.media.setEnabled(true);
+    const restore = Wl.media.env(fakeEnv(null));
+    try {
+      const src = "# I\n\n![p](https://img/idem.png)";
+      Wl.openMarkdown(src);
+      await drain(30);
+      const rec1 = JSON.parse(
+        window.localStorage.getItem("mdwb:current") || "null");
+      const embedded1 = !!rec1 &&
+        rec1.source.indexOf("![p](data:image/png;base64,FAKE=") !== -1;
+      /* Re-import the embedded form: nothing remote remains, so the pass
+         must not touch anything and the id must stay stable. */
+      Wl.openMarkdown(rec1.source);
+      await drain(30);
+      const remote = W.media.collect(doc.getElementById("content"));
+      const rec2 = JSON.parse(
+        window.localStorage.getItem("mdwb:current") || "null");
+      return embedded1 && remote.length === 0 &&
+        rec2 && rec2.source === rec1.source && rec2.id === rec1.id
+        ? ok("second import changed nothing (source + id byte-stable)")
+        : bad("embedded=" + embedded1 + " remote=" + JSON.stringify(remote) +
+              " stable=" + (!!rec2 && rec2.source === rec1.source));
+    } finally {
+      Wl.media.setEnabled(false);
+      restore();
+    }
+  });
+
+  checkA("N12", "caps: oversized pixels, dimensionless and oversized encodes keep their url", async (Wl) => {
+    Wl.media.setEnabled(true);
+    const restore = Wl.media.env({
+      loadImage: (u) => /zero/.test(u)
+        ? Promise.resolve({ naturalWidth: 0, naturalHeight: 0 })
+        : /big/.test(u)
+          ? Promise.resolve({ naturalWidth: 9, naturalHeight: 9 })
+          : /huge/.test(u)
+            ? Promise.resolve({ naturalWidth: 5000, naturalHeight: 5000 })
+            : Promise.resolve({ naturalWidth: 8, naturalHeight: 8 }),
+      /* Only the 9x9 "big" probe encodes over the budget; the 8x8 one
+         encodes normally, proving the encode cap is per-image. */
+      makeCanvas: (w) => ({
+        drawImage() {},
+        toPng: () => w === 9
+          ? "data:image/png;base64," + "A".repeat(26 * 1024 * 1024)
+          : "data:image/png;base64,FAKE=",
+      }),
     });
-    window.fetch = (u) => /wikimedia/.test(u)
-      ? Promise.resolve(resp(png, "image/png"))
-      : Promise.resolve(resp(svgBytes, "image/svg+xml"));
     const md = [
-      "`image 1` embeds successfully",
-      "![image 1](https://upload.wikimedia.org/wikipedia/commons/e/ef/X%5E4_-_4%5Ex.PNG)",
-      "",
-      "`image 2` does not embed; the link is untouched",
-      "![image 2](https://usefresh.dev/docs/architecture-flow-v2.svg)",
+      "![h](https://img/huge.png)",
+      "![z](https://img/zero.png)",
+      "![b](https://img/big.png)",
+      "![k](https://img/ok.png)",
     ].join("\n");
-    const out = await Wl.media.prepare(md);
-    const pngOk = out.indexOf("![image 1](data:image/png;base64,") !== -1;
-    const svgOk = out.indexOf("![image 2](data:image/svg+xml;base64,") !== -1;
-    const clean = out.indexOf("upload.wikimedia.org") === -1 &&
-      out.indexOf("usefresh.dev") === -1;
+    const host = doc.createElement("div");
+    host.innerHTML = Wl.render(md);
+    const sum = await Wl.media.embed(host, { source: md });
     Wl.media.setEnabled(false);
-    window.fetch = prevFetch;
-    return pngOk && svgOk && clean
-      ? ok("both repro images embedded; no remote urls left")
-      : bad("png=" + pngOk + " svg=" + svgOk + " clean=" + clean +
-            " out=" + out.slice(0, 160));
+    restore();
+    const okOnly = sum.captured === 1 && sum.kept === 3 &&
+      sum.source.indexOf("![k](data:image/png;base64,") !== -1 &&
+      sum.source.indexOf("![h](https://img/huge.png)") !== -1 &&
+      sum.source.indexOf("![z](https://img/zero.png)") !== -1 &&
+      sum.source.indexOf("![b](https://img/big.png)") !== -1;
+    return okOnly
+      ? ok("25MP pixel cap, 0px probe and 26MB encode all kept; ok.png captured")
+      : bad("sum=" + JSON.stringify({ c: sum.captured, k: sum.kept }) +
+            " src=" + (sum.source || "").slice(0, 160));
   });
-  checkA("N16", "prefix-sharing urls each rewrite exactly", async (Wl) => {
+
+  checkA("N13", "timeout: a probe that never settles is abandoned", async (Wl) => {
     Wl.media.setEnabled(true);
-    const prevFetch = window.fetch;
-    const png = new Uint8Array([
-      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0,
-    ]);
-    const resp = (buf, ct) => ({
-      ok: true, status: 200, statusText: "OK",
-      headers: { get: (k) => (/content-type/i.test(k) ? ct : null) },
-      arrayBuffer: () => Promise.resolve(buf),
+    const restoreEnv = Wl.media.env({
+      loadImage: () => new Promise(() => {}), /* never settles */
+      makeCanvas: () => ({
+        drawImage() {},
+        toPng: () => "data:image/png;base64,FAKE=",
+      }),
     });
-    window.fetch = () => Promise.resolve(resp(png, "application/octet-stream"));
-    const out = await Wl.media.prepare(
-      "![a](https://x/p.png) then ![b](https://x/p.png?raw=1)",
-    );
-    const aOk = out.indexOf("![a](data:image/png;base64,") === 0;
-    const bOk = out.indexOf("![b](data:image/png;base64,") !== -1;
-    const noMangle = out.indexOf("?raw=1") === -1 &&
-      out.indexOf("https://x/p.png") === -1;
+    const restoreT = Wl.media.timeout(10);
+    const md = "![t](https://img/slow.png)";
+    const host = doc.createElement("div");
+    host.innerHTML = Wl.render(md);
+    const sum = await Wl.media.embed(host, { source: md });
+    restoreT();
+    restoreEnv();
     Wl.media.setEnabled(false);
-    window.fetch = prevFetch;
-    return aOk && bOk && noMangle
-      ? ok("shared-prefix urls both embedded, nothing mangled")
-      : bad("a=" + aOk + " b=" + bOk + " clean=" + noMangle +
-            " out=" + out.slice(0, 160));
+    return sum.total === 1 && sum.captured === 0 && sum.kept === 1 &&
+      sum.source === md
+      ? ok("never-settling probe abandoned within the window; url kept")
+      : bad("sum=" + JSON.stringify(sum).slice(0, 160));
   });
+
+  /* ---------------- v1.8.5: rewrite precision + repro cases ---------------- */
+
+  checkA("N14", "prefix-sharing urls each rewrite exactly", async (Wl) => {
+    Wl.media.setEnabled(true);
+    const restore = Wl.media.env(fakeEnv(null));
+    const md = "![a](https://x/p.png) then ![b](https://x/p.png?raw=1)";
+    const host = doc.createElement("div");
+    host.innerHTML = Wl.render(md);
+    const sum = await Wl.media.embed(host, { source: md });
+    const domSrcs = Array.from(host.querySelectorAll("img"))
+      .map((i) => i.getAttribute("src"));
+    Wl.media.setEnabled(false);
+    restore();
+    const aOk = sum.source.indexOf("![a](data:image/png;base64,FAKE=") === 0;
+    const bOk = sum.source.indexOf("![b](data:image/png;base64,FAKE=") !== -1;
+    const noMangle = sum.source.indexOf("?raw=1") === -1 &&
+      sum.source.indexOf("https://x/p.png") === -1;
+    const domOk = domSrcs.every((s) =>
+      s.indexOf("data:image/png;base64,FAKE=") === 0);
+    return aOk && bOk && noMangle && domOk && sum.captured === 2
+      ? ok("shared-prefix urls both captured, nothing mangled")
+      : bad("a=" + aOk + " b=" + bOk + " clean=" + noMangle +
+            " dom=" + JSON.stringify(domSrcs) + " sum=" + JSON.stringify(sum).slice(0, 120));
+  });
+
+  checkA("N15", "repro: wikimedia .PNG and usefresh .svg both embed natively", async (Wl) => {
+    Wl.media.setEnabled(true);
+    const restore = Wl.media.env(fakeEnv(null));
+    try {
+      const md = [
+        "`image 1` embeds successfully",
+        "![image 1](https://upload.wikimedia.org/wikipedia/commons/e/ef/X%5E4_-_4%5Ex.PNG)",
+        "",
+        "`image 2` does not embed; the link is untouched",
+        "![image 2](https://usefresh.dev/docs/architecture-flow-v2.svg)",
+      ].join("\n");
+      Wl.openMarkdown(md);
+      await drain(30);
+      const content = doc.getElementById("content");
+      const srcs = Array.from(content.querySelectorAll("img"))
+        .map((i) => i.getAttribute("src"));
+      const rec = JSON.parse(
+        window.localStorage.getItem("mdwb:current") || "null");
+      const bothData = srcs.length === 2 && srcs.every((s) =>
+        s.indexOf("data:image/png;base64,FAKE=") === 0);
+      const clean = !!rec && rec.source.indexOf("upload.wikimedia.org") === -1 &&
+        rec.source.indexOf("usefresh.dev") === -1;
+      const textAlive = !!rec &&
+        rec.source.indexOf("`image 1` embeds successfully") !== -1 &&
+        rec.source.indexOf("`image 2` does not embed") !== -1;
+      return bothData && clean && textAlive
+        ? ok("both repro images embedded via the browser's own load; no remote urls left")
+        : bad("srcs=" + JSON.stringify(srcs) + " clean=" + clean +
+              " text=" + textAlive);
+    } finally {
+      Wl.media.setEnabled(false);
+      restore();
+    }
+  });
+
+  checkA("N16", "no fetch: the capture pass performs zero programmatic requests", async (Wl) => {
+    const prevFetch = window.fetch;
+    let calls = 0;
+    window.fetch = function () {
+      calls += 1;
+      return prevFetch.apply(window, arguments);
+    };
+    Wl.media.setEnabled(true);
+    const restore = Wl.media.env(fakeEnv(null));
+    try {
+      Wl.openMarkdown("# F\n\n![p](https://img/nf.png) and <img src=\"https://img/nf2.png\">");
+      await drain(30);
+      const srcs = Array.from(doc.getElementById("content").querySelectorAll("img"))
+        .map((i) => i.getAttribute("src"));
+      const embedded = srcs.length === 2 && srcs.every((s) =>
+        s.indexOf("data:image/png;base64,FAKE=") === 0);
+      return calls === 0 && embedded
+        ? ok("2 images embedded with window.fetch untouched (0 calls)")
+        : bad("fetchCalls=" + calls + " srcs=" + JSON.stringify(srcs));
+    } finally {
+      window.fetch = prevFetch;
+      Wl.media.setEnabled(false);
+      restore();
+    }
+  });
+
   checkA("N04", "keyboard shortcut pastes the clipboard with success toast", async (Wl) => {
     Wl.openMarkdown("# Seed\n\nbefore shortcut");
     window.navigator.clipboard = {
@@ -2373,6 +2401,7 @@ setTimeout(() => {
   console.log("v1.8.2 additions: embed allowlist widened to the standard image formats (png/jpg/jpeg/gif/webp/svg+xml/bmp/ico/avif with canonical aliases + svg/avif magic-byte sniffs), Paste-from-clipboard keyboard shortcut (Ctrl/Cmd+Shift+V, toasts, help-panel row, dropped from publications), and exact-capture metadata save (empty field clears the entry, cleared title reads Untitled, captured title applied to toolbar/footer/tab/placeholder/downloads/exports)");
   console.log("v1.8.3 additions: image format identification is extension-first (a recognised png/jpg/jpeg/gif/webp/svg/bmp/ico/avif ending names the canonical type outright — svg served as text/xml now embeds) with the content-type allowlist + magic-byte sniff kept as the fallback for unrecognised or missing extensions");
   console.log("v1.8.4 additions: the embed pass is AST-driven and conversion-integrated (image nodes collected from the parsed token tree — paren urls, multi-line titles, references, nesting, <img> — with boundary-checked exact rewrites), and the detection chain ends in the payload's magic bytes (extension, then Content-Type, then the bytes — a real image is never rejected for lacking an extension); repro-case suite covers the wikimedia .PNG + usefresh .svg pair");
+    console.log("v1.8.5 additions: the embed transport is now the browser's own image load — images are detected on the compiled DOM and captured through a CORS-approved probe + offscreen canvas + toDataURL (no fetch() anywhere, no extension/header/magic-byte chain), then swapped into the live DOM and rewritten into the source (badge links included, code masked out) and re-persisted; per-image failures, oversize caps, dimensionless probes and never-settling loads keep the remote url and never break the import flow");
   process.exit(fail + crash > 0 ? 1 : 0);
   }
 }, 150);

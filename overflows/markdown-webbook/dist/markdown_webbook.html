@@ -2702,7 +2702,7 @@
             <hr class="menu-sep" />
             <button class="menu-item" id="mi-embed" role="menuitemcheckbox" aria-checked="false" type="button">
                 <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
-                <span class="mi-label">Fetch &amp; embed remote media</span>
+                <span class="mi-label">Embed remote media</span>
                 <span class="pub-switch" aria-hidden="true"><span class="pub-knob"></span></span>
             </button>
             <button class="menu-item" id="mi-pubmenu" role="menuitemcheckbox" aria-checked="true" type="button">
@@ -2949,8 +2949,9 @@ lang: en
 This file is a **portable, self-contained Markdown reader**. It is one HTML
 file with no server, no account and no build step — it only ever reaches
 out to the network when you ask it to (Open from url…, or the
-**Fetch & embed remote media** switch, which downloads a document's images
-at import time). This embedded sample book doubles as the manual — drop in
+**Embed remote media** switch, which embeds a document's images as data
+uris through the browser's own image load). This embedded sample book
+doubles as the manual — drop in
 your own `.md` file to read something else.
 
 ## Get a document in
@@ -2972,19 +2973,21 @@ refresh or an accidental close is never a disaster.
 
 ### Remote media at import time
 
-The **Fetch & embed remote media** switch in the document menu decides how
+The **Embed remote media** switch in the document menu decides how
 media in an imported file is handled. **Off** (the default) strips image,
 video and audio urls out of the source, so the document reads — and
-exports — as pure local text. **On** downloads every image the moment the
-document is imported and rewrites it as data embedded in the file itself,
-so the images survive every export path: Download .md, both HTML exports
-and print. Every image node the parser produces is detected and encoded —
-png, jpg/jpeg, gif, webp, svg, bmp, ico and avif — with the format
-identified by a three-step chain: the url's file extension, then the
-response content type, then the payload's magic bytes, so a real image is
-never rejected merely for lacking a conventional extension. Either way
-the decision is made at import time and the choice is remembered on this
-device.
+exports — as pure local text. **On** embeds every rendered remote image
+the moment the document is imported: the browser loads each image exactly
+as it would to display it, and the pass re-requests that url through a
+CORS-approved probe, draws the decoded pixels onto an offscreen canvas and
+encodes them as data embedded in the file itself — no programmatic request
+is ever issued. Because the browser decodes the bytes, the image embeds
+whatever its url or server claims; the only honest boundary is a server
+that refuses the cross-origin read (no `access-control-allow-origin`
+header) — such an image keeps displaying from its remote url. Embedded
+images survive every export path: Download .md, both HTML exports and
+print. Either way the decision is made at import time and the choice is
+remembered on this device.
 
 ## What the reader supports
 
@@ -3123,7 +3126,7 @@ stays offline:
   authoring tools never travel with a publication: "Open Markdown file…",
   "Open from url…", "Paste from clipboard", "Edit HTML metadata" and
   "Export publishable HTML" are removed from its document menu, and the
-  "Fetch & embed remote media" and "Include document menu in publication"
+  "Embed remote media" and "Include document menu in publication"
   switches are gone, so a publication never carries an import, network or
   metadata entry point. The open-file (Ctrl+O), paste-from-clipboard
   (Ctrl/Cmd+Shift+V) and document-menu rows disappear from its shortcut
@@ -3266,7 +3269,7 @@ if(__exports != exports)module.exports = exports;return module.exports}));
 (function () {
     "use strict";
 
-    var APP_VERSION = "1.8.4";
+    var APP_VERSION = "1.8.5";
     var LS_PREFIX = "mdwb:";
     var MOBILE_QUERY = "(max-width: 720px)";
     var HEAVY_DOC_CHARS = 200 * 1024; /* show a loading state above this */
@@ -3465,7 +3468,7 @@ if(__exports != exports)module.exports = exports;return module.exports}));
     /* Untrusted-input policy: allow-list schemes; DOMPurify handles tags. */
 
     var Sanitizer = {
-        /* Allow-list schemes. data:image/* joined in 1.8.1 so the "Fetch &
+        /* Allow-list schemes. data:image/* joined in 1.8.1 so the "Embed
            embed remote media" pass (which rewrites image urls to data
            uris in the document source) survives sanitisation; every other
            data: flavour — text/html, application/javascript, … — stays
@@ -4505,7 +4508,7 @@ if(__exports != exports)module.exports = exports;return module.exports}));
 
          1. Doc-menu, always excluded (removed): "Open Markdown file…",
             "Open from url…", "Paste from clipboard", "Edit HTML metadata",
-            "Export publishable HTML", the "Fetch & embed remote media"
+            "Export publishable HTML", the "Embed remote media"
             switch and the "Include document menu in publication" switch.
          2. Shortcuts removed from the Help panel AND from the key
             listeners: Open a file (Ctrl+O), Paste from clipboard
@@ -6091,85 +6094,104 @@ if(__exports != exports)module.exports = exports;return module.exports}));
     };
 
     /* ================= Remote media pipeline (1.8.1) =======================
-       A load-time pre-render pass for every document obtained from a local
-       file, a url or the clipboard, driven by the "Fetch & embed remote
-       media" doc-menu switch (default off):
+       A load-time media pass for every document obtained from a local
+       file, a url or the clipboard, driven by the "Embed remote media"
+       doc-menu switch (default off):
 
          off — media constructs (markdown images incl. reference/shorthand
                forms and linked badges, plus raw HTML img/video/audio/
                picture/source/track) are stripped from the source, so the
                document reads and exports as pure local text.
-         on  — every *image* node the PARSER produces is collected from
-               the token tree (1.8.4: detection is syntactic and runs as
-               the first stage of the Markdown → HTML conversion, not by
-               scanning source text or rendered html afterwards), each
-               node's url is fetched once, and the url is rewritten into
-               a base64 data uri, so the images live inside the document
-               and survive every export path. A node's image format is
-               identified by a three-step chain — the url's file
-               extension, then the response Content-Type, then the
-               payload's magic bytes (1.8.3 + 1.8.2) — so a real image
-               is never rejected merely for lacking a conventional
-               extension.
+         on  — every remote image the compiled document renders is
+               captured into a base64 data uri WITHOUT any programmatic
+               network request (1.8.5). The Markdown is parsed to its
+               AST and compiled to HTML exactly as usual; once the
+               markup is in the DOM the pass walks the rendered content,
+               finds every <img> the browser is already loading
+               natively, re-requests each url through a CORS-approved
+               probe image (the browser cache serves it), draws the
+               decoded pixels onto an offscreen canvas and encodes them
+               with toDataURL(). No fetch() is ever issued and no second
+               download is needed — the browser's own image load is the
+               transport, which is what lets embedding survive the
+               cross-origin rules that block programmatic byte access
+               from file:// and localhost alike. The data uri replaces
+               the remote url in the live DOM and in the document
+               source, so the embedding survives every export path and
+               a refresh.
 
        Which urls count as media is decided by STRUCTURE (the construct
        the url appears in), never by extension. Fenced code blocks and
-       inline code spans are masked out first, so documented examples
-       survive both passes untouched — and because collection walks the
-       parsed token tree, indented code blocks are protected too.
-       Failures are per-image: a url that cannot be fetched (network
-       error, non-2xx, or a server that ships no CORS header so the
-       browser refuses byte access) or is not an image keeps its
-       original form, and the pass never rejects — a broken image must
-       never break an import. */
+       inline code spans are masked out before the source rewrite, and
+       because detection runs over the COMPILED DOM, examples documented
+       inside code fences, spans or indented blocks never render as
+       images in the first place — protection is structural, not
+       pattern-matched.
 
-    var MediaTools = {
-        /* Refuse to inline absurd payloads; oversized images keep their url. */
-        EMBED_MAX_BYTES: 25 * 1024 * 1024,
+       CORS is the hard boundary of any client-side capture, and the
+       pass is honest about it: a server that ships no Access-Control-
+       Allow-Origin header lets the <img> display, but the canvas stays
+       tainted and the pixels are unreadable, so such an image keeps its
+       original remote url and still displays. A CORS-approved image
+       embeds outright whatever its url extension or Content-Type
+       claims — the browser itself decodes the bytes, so the old
+       extension/header/magic-byte identification chain (1.8.2–1.8.4)
+       is no longer needed. Failures are per-image and the pass never
+       rejects — a broken image must never break an import. */
 
-        /* The standard range of image formats the embed pass encodes
-           (1.8.2). The header check matches against this list (aliases
-           like "image/jpg", "image/svg" and "image/ico" included) and
-           resolves to the canonical mime recorded here, so the emitted
-           data uri always carries a type every browser understands. */
-        EMBED_MIMES: {
-            "image/png": "image/png",
-            "image/jpg": "image/jpeg",
-            "image/jpeg": "image/jpeg",
-            "image/gif": "image/gif",
-            "image/webp": "image/webp",
-            "image/svg+xml": "image/svg+xml",
-            "image/svg": "image/svg+xml",
-            "image/bmp": "image/bmp",
-            "image/ico": "image/x-icon",
-            "image/x-icon": "image/x-icon",
-            "image/vnd.microsoft.icon": "image/x-icon",
-            "image/avif": "image/avif",
-            "image/avif-sequence": "image/avif",
-        },
+    const MediaTools = {
+        /* Refuse to inline absurd payloads: a capture whose data uri
+           would exceed this character budget keeps its url, mirroring
+           the byte cap the fetch-based pass used. */
+        EMBED_MAX_URI_CHARS: 25 * 1024 * 1024,
 
-        /* Extension identification is the FIRST resort (1.8.3): a url
-           whose last path segment ends in one of these extensions is
-           that format outright, whatever the response header claims —
-           svg shipped as "text/xml"/"application/xml" is endemic, and
-           the header-first check stranded such images as remote urls.
-           The mapping mirrors EMBED_MIMES' canonical targets. Query
-           strings and fragments are ignored; matching is
-           case-insensitive. An unrecognised (or missing) extension
-           falls through to the header + magic-byte proof below. */
-        EXT_MIMES: {
-            png: "image/png",
-            jpg: "image/jpeg",
-            jpeg: "image/jpeg",
-            gif: "image/gif",
-            webp: "image/webp",
-            svg: "image/svg+xml",
-            bmp: "image/bmp",
-            ico: "image/x-icon",
-            avif: "image/avif",
-        },
+        /* Canvas memory guard: an image beyond ~16.8M pixels (4K square)
+           is not captured — encoding anything larger risks multi-second
+           main-thread freezes and multi-megabyte strings. */
+        EMBED_MAX_PIXELS: 4096 * 4096,
+
+        /* A probe that neither loads nor errors inside this window is
+           abandoned (its url is kept); the pass must always settle. */
+        CAPTURE_TIMEOUT_MS: 15000,
 
         enabled: false,
+
+        /* Environment adapters. The Image/Canvas primitives live behind
+           this object so the verification harness can substitute
+           deterministic fakes (jsdom decodes no images and implements
+           no canvas). Every adapter may throw; captureOne treats any
+           throw as a per-image failure and answers null. */
+        env: {
+            /* CORS-approved re-request of an already-rendered image url.
+               Resolves the probe element once decoded; rejects when the
+               load fails (network error, or the cross-origin rules the
+               probe opted into are not satisfied). */
+            loadImage(url) {
+                return new Promise((resolve, reject) => {
+                    const probe = new Image();
+                    probe.crossOrigin = "anonymous";
+                    probe.onload = () => resolve(probe);
+                    probe.onerror = () =>
+                        reject(new Error("image load blocked"));
+                    probe.src = url;
+                });
+            },
+
+            /* Offscreen 2d canvas: draw + encode. toPng throws a
+               SecurityError on a tainted canvas (the response carried no
+               usable Access-Control-Allow-Origin) — caught upstream. */
+            makeCanvas(width, height) {
+                const c = document.createElement("canvas");
+                c.width = width;
+                c.height = height;
+                const ctx = c.getContext("2d");
+                if (!ctx) throw new Error("canvas 2d unavailable");
+                return {
+                    drawImage: (img) => ctx.drawImage(img, 0, 0),
+                    toPng: () => c.toDataURL("image/png"),
+                };
+            },
+        },
 
         init: function () {
             MediaTools.enabled = Storage.getJSON("embedMedia", false) === true;
@@ -6185,9 +6207,13 @@ if(__exports != exports)module.exports = exports;return module.exports}));
         },
 
         /* The single entry point used by every import path. Contract:
-           ALWAYS resolves with a string, never rejects. */
+           ALWAYS resolves with a string, never rejects. With the switch
+           on the source passes through UNCHANGED — the embedding happens
+           after the compile, over the rendered DOM (afterRender /
+           embedRendered), so the document appears immediately and each
+           image upgrades in place as its capture settles. */
         prepare: function (md) {
-            var text = String(md == null ? "" : md);
+            const text = String(md == null ? "" : md);
             if (!MediaTools.enabled) {
                 try {
                     return Promise.resolve(MediaTools.stripMedia(text));
@@ -6195,13 +6221,7 @@ if(__exports != exports)module.exports = exports;return module.exports}));
                     return Promise.resolve(text);
                 }
             }
-            try {
-                return MediaTools.embedImages(text).catch(function () {
-                    return text;
-                });
-            } catch (e) {
-                return Promise.resolve(text);
-            }
+            return Promise.resolve(text);
         },
 
         /* ---------- masking: keep code out of both passes ---------- */
@@ -6210,17 +6230,15 @@ if(__exports != exports)module.exports = exports;return module.exports}));
            with \u0000M<n>\u0000 placeholders. Placeholder-bearing lines
            are never blank, so the whitespace clean-up cannot eat them. */
         maskCode: function (text) {
-            var stash = [];
-            var put = function (seg) {
+            const stash = [];
+            const put = (seg) => {
                 stash.push(seg);
-                return "\u0000M" + (stash.length - 1) + "\u0000";
+                return `\u0000M${stash.length - 1}\u0000`;
             };
-            var lines = String(text).split("\n");
-            var out = [];
-            var fence = null; /* opening marker, e.g. "```" or "~~~" */
-            for (var i = 0; i < lines.length; i++) {
-                var line = lines[i];
-                var fm = /^[ \t]{0,3}(`{3,}|~{3,})[ \t]*$/.exec(line);
+            const out = [];
+            let fence = null; /* opening marker, e.g. "```" or "~~~" */
+            for (const line of String(text).split("\n")) {
+                const fm = /^[ \t]{0,3}(`{3,}|~{3,})[ \t]*$/.exec(line);
                 if (fence) {
                     if (
                         fm &&
@@ -6239,23 +6257,16 @@ if(__exports != exports)module.exports = exports;return module.exports}));
                 /* Inline code spans on the line (pairs only; a lone
                    backtick is ordinary text). Multi-line spans degrade to
                    "partially protected" — cosmetic, not correctness. */
-                out.push(
-                    line.replace(/(`+)([\s\S]*?)\1/g, function (m) {
-                        return put(m);
-                    }),
-                );
+                out.push(line.replace(/(`+)([\s\S]*?)\1/g, (m) => put(m)));
             }
-            return { text: out.join("\n"), stash: stash };
+            return { text: out.join("\n"), stash };
         },
 
         unmaskCode: function (text, stash) {
-            return String(text).replace(
-                /\u0000M(\d+)\u0000/g,
-                function (m, n) {
-                    var v = stash[Number(n)];
-                    return v == null ? m : v;
-                },
-            );
+            return String(text).replace(/\u0000M(\d+)\u0000/g, (m, n) => {
+                const v = stash[Number(n)];
+                return v == null ? m : v;
+            });
         },
 
         /* Collapse blank runs left behind by removals (an image alone on
@@ -6270,17 +6281,21 @@ if(__exports != exports)module.exports = exports;return module.exports}));
 
         /* -------------------------- strip pass -------------------------- */
 
+        /* Pure source-to-source rewrite: the input string is never
+           mutated, every stage feeds the next, and any unexpected shape
+           (a null here, a weird line there) degrades to "less is
+           removed" because each regex simply fails to match. */
         stripMedia: function (md) {
-            var masked = MediaTools.maskCode(md);
-            var s = masked.text;
+            const masked = MediaTools.maskCode(md == null ? "" : md);
+            let s = masked.text;
 
             /* Reference definitions present in the document (CommonMark
                label matching: case-insensitive, whitespace-collapsed). */
-            var defined = Object.create(null);
+            const defined = new Set();
             s.replace(
                 /^[ \t]{0,3}\[([^\]]+)\]:[ \t]*/gm,
-                function (m, label) {
-                    defined[MediaTools.normLabel(label)] = true;
+                (m, label) => {
+                    defined.add(MediaTools.normLabel(label));
                     return m;
                 },
             );
@@ -6288,14 +6303,14 @@ if(__exports != exports)module.exports = exports;return module.exports}));
             /* Labels referenced by image constructs — full refs always;
                shorthand refs only when a definition resolves them (a bare
                literal "![word]" with no definition is text, not media). */
-            var imgLabels = Object.create(null);
-            s.replace(/!\[[^\]]*\]\[([^\]]*)\]/g, function (m, label) {
-                imgLabels[MediaTools.normLabel(label)] = true;
+            const imgLabels = new Set();
+            s.replace(/!\[[^\]]*\]\[([^\]]*)\]/g, (m, label) => {
+                imgLabels.add(MediaTools.normLabel(label));
                 return m;
             });
-            s.replace(/!\[([^\]]*)\](?![\[(])/g, function (m, label) {
-                if (defined[MediaTools.normLabel(label)])
-                    imgLabels[MediaTools.normLabel(label)] = true;
+            s.replace(/!\[([^\]]*)\](?![\[(])/g, (m, label) => {
+                const key = MediaTools.normLabel(label);
+                if (defined.has(key)) imgLabels.add(key);
                 return m;
             });
 
@@ -6311,9 +6326,9 @@ if(__exports != exports)module.exports = exports;return module.exports}));
                definition actually resolves — a literal "![word]" with no
                definition is text and stays. */
             s = s.replace(/!\[[^\]]*\]\[[^\]]*\]/g, "");
-            s = s.replace(/!\[([^\]]*)\](?![\[(])/g, function (m, label) {
-                return imgLabels[MediaTools.normLabel(label)] ? "" : m;
-            });
+            s = s.replace(/!\[([^\]]*)\](?![\[(])/g, (m, label) =>
+                imgLabels.has(MediaTools.normLabel(label)) ? "" : m,
+            );
 
             /* Raw HTML media: paired containers with their content, then
                any leftover tags (void img/source/track, self-closing). */
@@ -6327,23 +6342,22 @@ if(__exports != exports)module.exports = exports;return module.exports}));
             /* Reference definitions used only by images. Remaining link
                usage (full "[text][ref]" and shorthand "[text]") keeps a
                definition alive even if an image shared the label. */
-            var linkLabels = Object.create(null);
-            s.replace(/\[[^\]]+\]\[([^\]]*)\]/g, function (m, label) {
-                linkLabels[MediaTools.normLabel(label)] = true;
+            const linkLabels = new Set();
+            s.replace(/\[[^\]]+\]\[([^\]]*)\]/g, (m, label) => {
+                linkLabels.add(MediaTools.normLabel(label));
                 return m;
             });
-            s.replace(/(^|\s)\[([^\]]+)\](?![\[(])(?!\s*:)/g, function (m, pre, label) {
-                linkLabels[MediaTools.normLabel(label)] = true;
+            s.replace(/(^|\s)\[([^\]]+)\](?![\[(])(?!\s*:)/g, (m, pre, label) => {
+                linkLabels.add(MediaTools.normLabel(label));
                 return m;
             });
             s = s.replace(
                 /^[ \t]{0,3}\[([^\]]+)\]:[ \t]*<?([^\s>]*)>?(?:[ \t]+(?:"[^"]*"|'[^']*'|\([^)]*\)))?[ \t]*$/gm,
-                function (m, label) {
-                    return linkLabels[MediaTools.normLabel(label)] ||
-                        !imgLabels[MediaTools.normLabel(label)]
+                (m, label) =>
+                    linkLabels.has(MediaTools.normLabel(label)) ||
+                    !imgLabels.has(MediaTools.normLabel(label))
                         ? m
-                        : "";
-                },
+                        : "",
             );
 
             return MediaTools.tidyBlank(
@@ -6351,76 +6365,18 @@ if(__exports != exports)module.exports = exports;return module.exports}));
             );
         },
 
-        /* -------------------------- embed pass -------------------------- */
-
-        /* AST-driven detection (1.8.4): the urls of the image nodes the
-           parser sees, so embedding covers exactly what the Markdown →
-           HTML conversion will render. The masked source is lexed with
-           the same engine that renders the document and the token tree
-           is walked: image tokens in every form and nesting depth
-           (inline, angle, titled, multi-line title, reference forms
-           with their hrefs already resolved, inside quotes, lists and
-           tables) plus <img src> carried by raw-html tokens. */
-        collectImageUrls: function (md) {
-            var masked = MediaTools.maskCode(String(md == null ? "" : md));
-            return MediaTools.collectTokenImageUrls(masked.text);
-        },
-
-        collectTokenImageUrls: function (text) {
-            if (typeof marked === "undefined" || !marked || !marked.lexer)
-                return [];
-            var tokens;
-            try {
-                tokens = marked.lexer(String(text == null ? "" : text));
-            } catch (e) {
-                return [];
-            }
-            var urls = [];
-            var seen = Object.create(null);
-            var push = function (u) {
-                u = String(u || "").trim();
-                if (!u || seen[u]) return;
-                if (/^data:/i.test(u)) return; /* already embedded */
-                if (!/^https?:\/\//i.test(u)) return; /* fetch refuses these */
-                seen[u] = true;
-                urls.push(u);
-            };
-            var imgRe = /<img\b[^>]*?\bsrc\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/gi;
-            var visit = function (node, depth) {
-                if (!node || typeof node !== "object" || depth > 64) return;
-                if (node.type === "image" && node.href) push(node.href);
-                if (node.type === "html" && typeof node.text === "string") {
-                    imgRe.lastIndex = 0;
-                    var m;
-                    while ((m = imgRe.exec(node.text)))
-                        push(m[1] != null ? m[1] : m[2] != null ? m[2] : m[3]);
-                }
-                /* Recurse into every nested token list the lexer may
-                   attach: tokens, list items, table header/row cells. */
-                for (var k in node) {
-                    if (!Object.prototype.hasOwnProperty.call(node, k))
-                        continue;
-                    var v = node[k];
-                    if (Array.isArray(v))
-                        for (var i = 0; i < v.length; i++)
-                            visit(v[i], depth + 1);
-                }
-            };
-            if (Array.isArray(tokens))
-                for (var i = 0; i < tokens.length; i++) visit(tokens[i], 0);
-            return urls;
-        },
+        /* ---------------------- embed pass (1.8.5) ---------------------- */
 
         /* Replace every standalone occurrence of `url` with `uri` in the
-           masked source (1.8.4). The url comes from a parsed image node,
-           so a boundary check keeps the rewrite precise: an occurrence
+           masked source (1.8.4). The url comes from a rendered image, so
+           a boundary check keeps the rewrite precise: an occurrence
            glued to further url characters — a longer sibling url that
            merely shares this one as a prefix (…p.png vs …p.png?raw=1) —
            is left untouched for its own replacement. Markdown delimiters
            (parens, quotes, brackets) are NOT boundary characters — they
            hug every inline destination — so the class covers only
            characters that continue a url itself. Callers replace in
-           descending url-length order, so the longer sibling is always
+           descending-url-length order, so the longer sibling is always
            consumed first; data uris cannot contain a raw url substring
            (base64 has no colon), so earlier replacements are never
            re-matched. Occurrences inside link targets that reuse an
@@ -6430,15 +6386,15 @@ if(__exports != exports)module.exports = exports;return module.exports}));
 
         replaceUrlExact: function (text, url, uri) {
             if (!url || !uri || url === uri) return text;
-            var out = "";
-            var at = 0;
+            let out = "";
+            let at = 0;
             for (;;) {
-                var i = text.indexOf(url, at);
+                const i = text.indexOf(url, at);
                 if (i === -1) break;
-                var end = i + url.length;
-                var before = i > 0 ? text.charAt(i - 1) : "";
-                var after = end < text.length ? text.charAt(end) : "";
-                var glued =
+                const end = i + url.length;
+                const before = i > 0 ? text.charAt(i - 1) : "";
+                const after = end < text.length ? text.charAt(end) : "";
+                const glued =
                     (!!before && MediaTools.URL_BOUNDARY.test(before)) ||
                     (!!after && MediaTools.URL_BOUNDARY.test(after));
                 out += text.slice(at, glued ? end : i);
@@ -6448,219 +6404,184 @@ if(__exports != exports)module.exports = exports;return module.exports}));
             return out + text.slice(at);
         },
 
-        embedImages: function (md) {
-            var masked = MediaTools.maskCode(md);
-            var urls;
-            try {
-                urls = MediaTools.collectTokenImageUrls(masked.text);
-            } catch (e) {
-                urls = [];
+        /* DOM detection (1.8.5): the remote urls the compiled document
+           actually renders, read from the src ATTRIBUTE — the exact form
+           the renderer wrote and the source rewrite must find (elm.src
+           would resolve relative urls against the page and never match).
+           Only http(s) urls enter the pass: data uris are already
+           embedded, blob/file/relative targets have no remote origin to
+           capture from. Images documented inside code fences, spans or
+           indented blocks never render, so code protection is
+           structural; the same url rendered twice is reported once. */
+        collectDomImages: function (container) {
+            const urls = [];
+            const seen = new Set();
+            if (!container) return urls;
+            for (const img of container.querySelectorAll("img")) {
+                const src = img.getAttribute("src") || "";
+                if (seen.has(src) || !/^https?:\/\//i.test(src)) continue;
+                seen.add(src);
+                urls.push(src);
             }
-            if (!urls.length) {
-                return Promise.resolve(
-                    MediaTools.unmaskCode(masked.text, masked.stash),
-                );
-            }
+            return urls;
+        },
 
-            /* Fetch each parsed image url once — dedupe + small pool; the
-               cache is primed HERE so the replacement pass below always
-               finds settled values. */
-            var cache = Object.create(null); /* url -> Promise<uri|null> */
-            return MediaTools.mapPool(
-                urls,
-                function (u) {
-                    if (!(u in cache)) cache[u] = MediaTools.toDataUri(u);
-                    /* Replace the cached promise with its settled value so
-                       the synchronous replacement pass below can read it. */
-                    return Promise.resolve(cache[u]).then(function (v) {
-                        cache[u] = v;
-                        return v;
-                    });
+        /* Capture one url: a CORS-approved probe load, a guard pass, an
+           offscreen draw and a PNG encode. EVERY failure mode — load
+           error (network, or the cross-origin rules the probe opted
+           into), timeout, zero dimensions, oversized pixels, tainted
+           canvas, oversized encode — resolves to null so the caller
+           keeps the original url. Never rejects. */
+        captureOne: function (url) {
+            let timer = null;
+            const load = Promise.race([
+                Promise.resolve().then(() => MediaTools.env.loadImage(url)),
+                new Promise((resolve, reject) => {
+                    timer = setTimeout(
+                        () => reject(new Error("image load timed out")),
+                        MediaTools.CAPTURE_TIMEOUT_MS,
+                    );
+                }),
+            ]).then(
+                (img) => {
+                    clearTimeout(timer);
+                    return img;
                 },
-                5,
-            ).then(function () {
-                /* Longest urls first, so a longer sibling that shares a
-                   prefix with a shorter one is rewritten before the
-                   shorter could match inside it. */
-                var ordered = urls.slice().sort(function (a, b) {
-                    return b.length - a.length;
-                });
-                var out = masked.text;
-                for (var i = 0; i < ordered.length; i++) {
-                    var uri = cache[ordered[i]];
-                    if (!uri) continue; /* fetch/type failure keeps the url */
-                    out = MediaTools.replaceUrlExact(out, ordered[i], uri);
-                }
-                return MediaTools.tidyBlank(
-                    MediaTools.unmaskCode(out, masked.stash),
-                );
-            });
-        },
-
-        /* Fetch one image and wrap it as a data uri. Any failure — no
-           fetch, network error, non-2xx, non-image payload, oversized —
-           resolves to null so the caller keeps the original url. */
-        toDataUri: function (url) {
-            var doFetch =
-                typeof window.fetch === "function" ? window.fetch : null;
-            if (!doFetch || !/^https?:\/\//i.test(url))
-                return Promise.resolve(null);
-            var p;
-            try {
-                /* referrerPolicy: some hosts reject cross-origin fetches
-                   whose referrer looks foreign; asking to send none is the
-                   friendlier default for an embed probe. */
-                p = doFetch(url, {
-                    credentials: "omit",
-                    referrerPolicy: "no-referrer",
-                });
-            } catch (e) {
-                return Promise.resolve(null);
-            }
-            return Promise.resolve(p)
-                .then(function (res) {
-                    if (!res || !res.ok) return null;
-                    var ct =
-                        res.headers && res.headers.get
-                            ? res.headers.get("content-type") || ""
-                            : "";
-                    if (!res.arrayBuffer) return null;
-                    return Promise.resolve(res.arrayBuffer()).then(function (
-                        buf,
-                    ) {
-                        if (!buf || buf.byteLength > MediaTools.EMBED_MAX_BYTES)
-                            return null;
-                        var bytes = new Uint8Array(buf);
-                        var mime = MediaTools.extMime(url) ||
-                            MediaTools.resolveMime(ct, bytes);
-                        if (!mime) return null;
-                        return (
-                            "data:" + mime + ";base64," +
-                            MediaTools.bytesToBase64(bytes)
-                        );
-                    });
+                (err) => {
+                    clearTimeout(timer);
+                    throw err;
+                },
+            );
+            return load
+                .then((img) => {
+                    const w = img.naturalWidth || img.width || 0;
+                    const h = img.naturalHeight || img.height || 0;
+                    if (!w || !h) throw new Error("image has no pixels");
+                    if (w * h > MediaTools.EMBED_MAX_PIXELS)
+                        throw new Error("image too large to capture");
+                    const canvas = MediaTools.env.makeCanvas(w, h);
+                    canvas.drawImage(img);
+                    const uri = canvas.toPng();
+                    if (!/^data:image\//i.test(uri))
+                        throw new Error("capture did not encode an image");
+                    if (uri.length > MediaTools.EMBED_MAX_URI_CHARS)
+                        throw new Error("capture exceeds the embed budget");
+                    return uri;
                 })
-                .catch(function () {
-                    return null;
-                });
+                .catch(() => null);
         },
 
-        /* First resort of the format identification (1.8.3): read the
-           url's file extension — the last path segment's final dot,
-           ignoring any query string or fragment, case-insensitively —
-           and map it through EXT_MIMES. A missing or unrecognised
-           extension answers null so resolveMime takes over. */
-        extMime: function (url) {
-            var path = String(url == null ? "" : url).split(/[?#]/, 1)[0];
-            var seg = path.slice(path.lastIndexOf("/") + 1);
-            var dot = seg.lastIndexOf(".");
-            if (dot === -1) return null;
-            return MediaTools.EXT_MIMES[seg.slice(dot + 1).toLowerCase()] ||
-                null;
-        },
+        /* Embed every remote image of a rendered document (1.8.5).
+           Captures run through a small worker pool; the live DOM is
+           updated per image as its capture settles (the <img> src, plus
+           any <a href> that targets the same url — the badge pattern —
+           so linked images stay usable offline too); the source text is
+           rewritten once, after every capture has settled, with code
+           masked out for the duration. When the document is still the
+           current one the rewrite is re-persisted, so the embedded form
+           survives a refresh and every export path. Resolves with a
+           summary and NEVER rejects — one failing image must not break
+           the document flow. */
+        embedRendered: async function (container, doc) {
+            const summary = { total: 0, captured: 0, kept: 0, source: null };
+            try {
+                const urls = MediaTools.collectDomImages(container);
+                summary.total = urls.length;
+                if (!urls.length) return summary;
 
-        /* The header check against the standard-format allowlist, then the
-           payload itself (1.8.4): whenever the header does not POSITIVELY
-           name a standard image type — absent, generic (octet-stream), or
-           mislabelled (svg shipped as text/xml, application/xml, even
-           text/html) — the bytes are the next and final authority. The
-           sniffer's patterns are strict, so a real png/jpeg/gif/webp/bmp/
-           ico/avif/svg signature embeds whatever the header claimed while
-           an html page, a pdf or any other non-image payload matches
-           nothing and keeps its url. A valid image is therefore never
-           rejected merely because its url lacks a conventional image
-           extension. The returned mime is the canonical type the data uri
-           carries. */
-        resolveMime: function (ct, bytes) {
-            ct = String(ct || "").split(";")[0].trim().toLowerCase();
-            if (ct && MediaTools.EMBED_MIMES[ct])
-                return MediaTools.EMBED_MIMES[ct];
-            return MediaTools.sniffImage(bytes);
-        },
+                /* url -> [elements]: every <img> that renders the url and
+                   every <a> that targets it. */
+                const targets = new Map();
+                for (const el of container.querySelectorAll("img, a")) {
+                    const attr = el.tagName === "IMG" ? "src" : "href";
+                    const u = el.getAttribute(attr) || "";
+                    if (!/^https?:\/\//i.test(u)) continue;
+                    if (!targets.has(u)) targets.set(u, []);
+                    targets.get(u).push(el);
+                }
 
-        /* Magic bytes for the binary formats, plus two text/box formats
-           the sniff path gained in 1.8.2: svg is plain markup (an xml
-           prolog or a doctype may precede the <svg root) and avif is an
-           ISO-BMFF "ftyp" box whose brand names the avif family. */
-        sniffImage: function (b) {
-            if (!b || b.length < 12) return null;
-            if (
-                b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47
-            )
-                return "image/png";
-            if (b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff)
-                return "image/jpeg";
-            if (b[0] === 0x47 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x38)
-                return "image/gif";
-            if (
-                b[0] === 0x52 && b[1] === 0x49 && b[2] === 0x46 &&
-                b[3] === 0x46 && b[8] === 0x57 && b[9] === 0x45 &&
-                b[10] === 0x42 && b[11] === 0x50
-            )
-                return "image/webp";
-            if (b[0] === 0x42 && b[1] === 0x4d) return "image/bmp";
-            if (b[0] === 0 && b[1] === 0 && b[2] === 1 && b[3] === 0)
-                return "image/x-icon";
-            if (
-                b[4] === 0x66 && b[5] === 0x74 && b[6] === 0x79 &&
-                b[7] === 0x70 /* "ftyp" */ &&
-                ((b[8] === 0x61 && b[9] === 0x76 && b[10] === 0x69 &&
-                  b[11] === 0x66) /* avif */ ||
-                 (b[8] === 0x61 && b[9] === 0x76 && b[10] === 0x69 &&
-                  b[11] === 0x73) /* avis */ ||
-                 (b[8] === 0x61 && b[9] === 0x76 && b[10] === 0x30 &&
-                  b[11] === 0x31)) /* av01 */
-            )
-                return "image/avif";
-            var head = "";
-            for (var i = 0; i < Math.min(b.length, 256); i++)
-                head += String.fromCharCode(b[i]);
-            if (
-                /^\s*(?:<\?xml[\s\S]{0,200}?\?>\s*)?(?:<!DOCTYPE\s+svg[^>]*>\s*)?<svg[\s>/]/i.test(
-                    head,
-                )
-            )
-                return "image/svg+xml";
-            return null;
-        },
-
-        bytesToBase64: function (bytes) {
-            var CHUNK = 0x8000;
-            var out = [];
-            for (var i = 0; i < bytes.length; i += CHUNK) {
-                out.push(
-                    String.fromCharCode.apply(
-                        null,
-                        bytes.subarray(i, i + CHUNK),
-                    ),
+                const captured = new Map(); /* url -> data uri */
+                await MediaTools.mapPool(
+                    urls,
+                    async (url) => {
+                        const uri = await MediaTools.captureOne(url);
+                        if (!uri) return null; /* kept — still displays */
+                        captured.set(url, uri);
+                        for (const el of targets.get(url) || [])
+                            el.setAttribute(
+                                el.tagName === "IMG" ? "src" : "href",
+                                uri,
+                            );
+                        return uri;
+                    },
+                    4,
                 );
+
+                summary.captured = captured.size;
+                summary.kept = summary.total - captured.size;
+                if (captured.size && doc && typeof doc.source === "string") {
+                    /* Longest urls first, so a longer sibling that shares
+                       a prefix with a shorter one is rewritten before the
+                       shorter could match inside it. */
+                    const ordered = [...captured.keys()].sort(
+                        (a, b) => b.length - a.length,
+                    );
+                    const masked = MediaTools.maskCode(doc.source);
+                    let out = masked.text;
+                    for (const u of ordered)
+                        out = MediaTools.replaceUrlExact(
+                            out, u, captured.get(u),
+                        );
+                    out = MediaTools.tidyBlank(
+                        MediaTools.unmaskCode(out, masked.stash),
+                    );
+                    if (out !== doc.source) {
+                        doc.source = out;
+                        doc.id = djb2(out);
+                        if (App.current === doc)
+                            doc.persisted = Source.saveDoc(doc);
+                    }
+                }
+                if (doc) summary.source = doc.source;
+                return summary;
+            } catch (e) {
+                /* Defensive floor: the rendered document is exactly as it
+                   was — remote urls intact, images still displaying. */
+                summary.captured = 0;
+                summary.kept = summary.total;
+                return summary;
             }
-            return btoa(out.join(""));
+        },
+
+        /* Load-path hook (called at the end of App.doLoad): with the
+           switch on, embed the freshly rendered document. Fire-and-
+           forget — the reading state is never blocked and the promise is
+           guarded so nothing escapes into the console. */
+        afterRender: function (doc) {
+            if (!MediaTools.enabled || !doc || doc.origin === "embedded")
+                return;
+            if (typeof window !== "undefined" && window.MDWB_PUB) return;
+            Promise.resolve()
+                .then(() => MediaTools.embedRendered(App.dom.content, doc))
+                .catch(() => {});
         },
 
         /* Small worker pool so a document with many images neither
            floods the network stack nor serialises painfully. */
-        mapPool: function (items, worker, limit) {
-            var results = new Array(items.length);
-            var i = 0;
-            var next = function () {
-                if (i >= items.length) return Promise.resolve();
-                var idx = i++;
-                return Promise.resolve()
-                    .then(function () {
-                        return worker(items[idx], idx);
-                    })
-                    .then(function (r) {
-                        results[idx] = r;
-                        return next();
-                    });
+        mapPool: async function (items, worker, limit) {
+            const results = new Array(items.length);
+            let i = 0;
+            const next = async () => {
+                if (i >= items.length) return;
+                const idx = i++;
+                results[idx] = await worker(items[idx], idx);
+                await next();
             };
-            var starters = [];
-            for (var s = 0; s < Math.min(limit || 4, items.length); s++)
-                starters.push(next());
-            return Promise.all(starters).then(function () {
-                return results;
-            });
+            const starters = [];
+            const width = Math.max(1, Math.min(limit || 4, items.length));
+            for (let s = 0; s < width; s++) starters.push(next());
+            await Promise.all(starters);
+            return results;
         },
     };
 
@@ -6917,6 +6838,13 @@ if(__exports != exports)module.exports = exports;return module.exports}));
                     UI.toast('Opened "' + Meta.effectiveMeta().title + '"');
                 /* origin "url" stays silent by design: the dialog closing is
                    the success signal (1.8.0). */
+
+                /* Native media capture (1.8.5): with the embed switch on,
+                   the freshly rendered document is embedded in place —
+                   each remote <img> the browser loaded natively is
+                   re-encoded as a data uri in the DOM and in the source.
+                   Fire-and-forget; never blocks the reading state. */
+                MediaTools.afterRender(doc);
             } catch (err) {
                 UI.hideLoading();
                 App.showFatal(err);
@@ -7073,7 +7001,7 @@ if(__exports != exports)module.exports = exports;return module.exports}));
             );
         },
 
-        /* "Fetch & embed remote media" (1.8.1): a global import behaviour,
+        /* "Embed remote media" (1.8.1): a global import behaviour,
            persisted app-wide (not per document) and applied the next time
            content arrives from a file, a url or the clipboard. */
         syncEmbedUi: function () {
@@ -7090,7 +7018,7 @@ if(__exports != exports)module.exports = exports;return module.exports}));
             App.syncEmbedUi();
             UI.toast(
                 MediaTools.enabled
-                    ? "Remote media will be fetched and embedded when importing"
+                    ? "Remote media will be embedded when importing"
                     : "Remote media will be removed when importing",
             );
         },
@@ -8118,35 +8046,38 @@ if(__exports != exports)module.exports = exports;return module.exports}));
             strip: function (md) {
                 return MediaTools.stripMedia(md);
             },
-            embed: function (md) {
-                return MediaTools.embedImages(md);
+            /* Harness hook (1.8.5): run the embed pass over an already
+               rendered container + document-like { source }; resolves
+               the summary { total, captured, kept, source }. */
+            embed: function (container, doc) {
+                return MediaTools.embedRendered(container, doc);
             },
-            /* Harness hook (1.8.4): the urls of the image nodes the parser
-               sees — the AST-driven detection stage of the embed pass. */
-            collect: function (md) {
+            /* Harness hook (1.8.5): the remote urls the compiled DOM
+               carries — the detection stage of the embed pass. */
+            collect: function (container) {
                 try {
-                    return MediaTools.collectImageUrls(md);
+                    return MediaTools.collectDomImages(container);
                 } catch (e) {
                     return [];
                 }
             },
-            /* Harness hook (1.8.3): the extension-first format map —
-               the first resort of the identification chain. */
-            extMime: function (u) {
-                try {
-                    return MediaTools.extMime(u);
-                } catch (e) {
-                    return null;
-                }
+            /* Harness hook (1.8.5): swap the environment adapters for
+               fakes; returns a restore function. */
+            env: function (patch) {
+                const prev = MediaTools.env;
+                MediaTools.env = Object.assign({}, prev, patch || {});
+                return () => {
+                    MediaTools.env = prev;
+                };
             },
-            /* Harness hook (1.8.2): the content-type allowlist + magic-byte
-               sniffer — the fallback means of the chain. */
-            resolveMime: function (ct, bytes) {
-                try {
-                    return MediaTools.resolveMime(ct, new Uint8Array(bytes));
-                } catch (e) {
-                    return null;
-                }
+            /* Harness hook (1.8.5): shrink the probe-abandonment window
+               so the timeout path is testable; returns a restore. */
+            timeout: function (ms) {
+                const prev = MediaTools.CAPTURE_TIMEOUT_MS;
+                MediaTools.CAPTURE_TIMEOUT_MS = ms;
+                return () => {
+                    MediaTools.CAPTURE_TIMEOUT_MS = prev;
+                };
             },
             enabled: function () {
                 return MediaTools.enabled;

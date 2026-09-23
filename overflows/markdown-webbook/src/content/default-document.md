@@ -10,8 +10,9 @@ lang: en
 This file is a **portable, self-contained Markdown reader**. It is one HTML
 file with no server, no account and no build step — it only ever reaches
 out to the network when you ask it to (Open from url…, or the
-**Fetch & embed remote media** switch, which downloads a document's images
-at import time). This embedded sample book doubles as the manual — drop in
+**Embed remote media** switch, which embeds a document's images as data
+uris through the browser's own image load). This embedded sample book
+doubles as the manual — drop in
 your own `.md` file to read something else.
 
 ## Get a document in
@@ -33,19 +34,21 @@ refresh or an accidental close is never a disaster.
 
 ### Remote media at import time
 
-The **Fetch & embed remote media** switch in the document menu decides how
+The **Embed remote media** switch in the document menu decides how
 media in an imported file is handled. **Off** (the default) strips image,
 video and audio urls out of the source, so the document reads — and
-exports — as pure local text. **On** downloads every image the moment the
-document is imported and rewrites it as data embedded in the file itself,
-so the images survive every export path: Download .md, both HTML exports
-and print. Every image node the parser produces is detected and encoded —
-png, jpg/jpeg, gif, webp, svg, bmp, ico and avif — with the format
-identified by a three-step chain: the url's file extension, then the
-response content type, then the payload's magic bytes, so a real image is
-never rejected merely for lacking a conventional extension. Either way
-the decision is made at import time and the choice is remembered on this
-device.
+exports — as pure local text. **On** embeds every rendered remote image
+the moment the document is imported: the browser loads each image exactly
+as it would to display it, and the pass re-requests that url through a
+CORS-approved probe, draws the decoded pixels onto an offscreen canvas and
+encodes them as data embedded in the file itself — no programmatic request
+is ever issued. Because the browser decodes the bytes, the image embeds
+whatever its url or server claims; the only honest boundary is a server
+that refuses the cross-origin read (no `access-control-allow-origin`
+header) — such an image keeps displaying from its remote url. Embedded
+images survive every export path: Download .md, both HTML exports and
+print. Either way the decision is made at import time and the choice is
+remembered on this device.
 
 ## What the reader supports
 
@@ -184,7 +187,7 @@ stays offline:
   authoring tools never travel with a publication: "Open Markdown file…",
   "Open from url…", "Paste from clipboard", "Edit HTML metadata" and
   "Export publishable HTML" are removed from its document menu, and the
-  "Fetch & embed remote media" and "Include document menu in publication"
+  "Embed remote media" and "Include document menu in publication"
   switches are gone, so a publication never carries an import, network or
   metadata entry point. The open-file (Ctrl+O), paste-from-clipboard
   (Ctrl/Cmd+Shift+V) and document-menu rows disappear from its shortcut
