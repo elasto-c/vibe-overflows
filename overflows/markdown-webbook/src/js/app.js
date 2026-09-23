@@ -19,7 +19,7 @@
 (function () {
     "use strict";
 
-    var APP_VERSION = "1.8.3";
+    var APP_VERSION = "1.8.4";
     var LS_PREFIX = "mdwb:";
     var MOBILE_QUERY = "(max-width: 720px)";
     var HEAVY_DOC_CHARS = 200 * 1024; /* show a loading state above this */
@@ -2852,25 +2852,29 @@
                forms and linked badges, plus raw HTML img/video/audio/
                picture/source/track) are stripped from the source, so the
                document reads and exports as pure local text.
-         on  — every *image* url is fetched once, its image format
-               identified by file extension first (1.8.3), then by
-               content type with a magic-byte sniff when the server is
-               unhelpful (1.8.2), and rewritten into a base64 data uri,
-               so the images live inside the document and survive every
-               export path.
+         on  — every *image* node the PARSER produces is collected from
+               the token tree (1.8.4: detection is syntactic and runs as
+               the first stage of the Markdown → HTML conversion, not by
+               scanning source text or rendered html afterwards), each
+               node's url is fetched once, and the url is rewritten into
+               a base64 data uri, so the images live inside the document
+               and survive every export path. A node's image format is
+               identified by a three-step chain — the url's file
+               extension, then the response Content-Type, then the
+               payload's magic bytes (1.8.3 + 1.8.2) — so a real image
+               is never rejected merely for lacking a conventional
+               extension.
 
        Which urls count as media is decided by STRUCTURE (the construct
-       the url appears in), never by extension. Once a url IS media, its
-       image FORMAT is identified by extension FIRST — a recognised
-       .png/.svg/… ending names the type outright, because servers
-       mislabel images (svg served as "text/xml" is endemic) far more
-       often than a real file lies about its name — and only an
-       unrecognised extension falls through to the header + magic-byte
-       proof. Fenced code blocks and inline code spans are masked out
-       first, so documented examples survive both passes untouched.
-       Failures are per-image: a url that cannot be fetched or is not
-       an image keeps its original form, and the pass never rejects — a
-       broken image must never break an import. */
+       the url appears in), never by extension. Fenced code blocks and
+       inline code spans are masked out first, so documented examples
+       survive both passes untouched — and because collection walks the
+       parsed token tree, indented code blocks are protected too.
+       Failures are per-image: a url that cannot be fetched (network
+       error, non-2xx, or a server that ships no CORS header so the
+       browser refuses byte access) or is not an image keeps its
+       original form, and the pass never rejects — a broken image must
+       never break an import. */
 
     var MediaTools = {
         /* Refuse to inline absurd payloads; oversized images keep their url. */
@@ -3102,130 +3106,119 @@
 
         /* -------------------------- embed pass -------------------------- */
 
+        /* AST-driven detection (1.8.4): the urls of the image nodes the
+           parser sees, so embedding covers exactly what the Markdown →
+           HTML conversion will render. The masked source is lexed with
+           the same engine that renders the document and the token tree
+           is walked: image tokens in every form and nesting depth
+           (inline, angle, titled, multi-line title, reference forms
+           with their hrefs already resolved, inside quotes, lists and
+           tables) plus <img src> carried by raw-html tokens. */
+        collectImageUrls: function (md) {
+            var masked = MediaTools.maskCode(String(md == null ? "" : md));
+            return MediaTools.collectTokenImageUrls(masked.text);
+        },
+
+        collectTokenImageUrls: function (text) {
+            if (typeof marked === "undefined" || !marked || !marked.lexer)
+                return [];
+            var tokens;
+            try {
+                tokens = marked.lexer(String(text == null ? "" : text));
+            } catch (e) {
+                return [];
+            }
+            var urls = [];
+            var seen = Object.create(null);
+            var push = function (u) {
+                u = String(u || "").trim();
+                if (!u || seen[u]) return;
+                if (/^data:/i.test(u)) return; /* already embedded */
+                if (!/^https?:\/\//i.test(u)) return; /* fetch refuses these */
+                seen[u] = true;
+                urls.push(u);
+            };
+            var imgRe = /<img\b[^>]*?\bsrc\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/gi;
+            var visit = function (node, depth) {
+                if (!node || typeof node !== "object" || depth > 64) return;
+                if (node.type === "image" && node.href) push(node.href);
+                if (node.type === "html" && typeof node.text === "string") {
+                    imgRe.lastIndex = 0;
+                    var m;
+                    while ((m = imgRe.exec(node.text)))
+                        push(m[1] != null ? m[1] : m[2] != null ? m[2] : m[3]);
+                }
+                /* Recurse into every nested token list the lexer may
+                   attach: tokens, list items, table header/row cells. */
+                for (var k in node) {
+                    if (!Object.prototype.hasOwnProperty.call(node, k))
+                        continue;
+                    var v = node[k];
+                    if (Array.isArray(v))
+                        for (var i = 0; i < v.length; i++)
+                            visit(v[i], depth + 1);
+                }
+            };
+            if (Array.isArray(tokens))
+                for (var i = 0; i < tokens.length; i++) visit(tokens[i], 0);
+            return urls;
+        },
+
+        /* Replace every standalone occurrence of `url` with `uri` in the
+           masked source (1.8.4). The url comes from a parsed image node,
+           so a boundary check keeps the rewrite precise: an occurrence
+           glued to further url characters — a longer sibling url that
+           merely shares this one as a prefix (…p.png vs …p.png?raw=1) —
+           is left untouched for its own replacement. Markdown delimiters
+           (parens, quotes, brackets) are NOT boundary characters — they
+           hug every inline destination — so the class covers only
+           characters that continue a url itself. Callers replace in
+           descending url-length order, so the longer sibling is always
+           consumed first; data uris cannot contain a raw url substring
+           (base64 has no colon), so earlier replacements are never
+           re-matched. Occurrences inside link targets that reuse an
+           image's exact url are inlined too (rare, benign: the link
+           still resolves to the same embedded image). */
+        URL_BOUNDARY: /[A-Za-z0-9%._~:/?#&=+;,~-]/,
+
+        replaceUrlExact: function (text, url, uri) {
+            if (!url || !uri || url === uri) return text;
+            var out = "";
+            var at = 0;
+            for (;;) {
+                var i = text.indexOf(url, at);
+                if (i === -1) break;
+                var end = i + url.length;
+                var before = i > 0 ? text.charAt(i - 1) : "";
+                var after = end < text.length ? text.charAt(end) : "";
+                var glued =
+                    (!!before && MediaTools.URL_BOUNDARY.test(before)) ||
+                    (!!after && MediaTools.URL_BOUNDARY.test(after));
+                out += text.slice(at, glued ? end : i);
+                if (!glued) out += uri;
+                at = end;
+            }
+            return out + text.slice(at);
+        },
+
         embedImages: function (md) {
             var masked = MediaTools.maskCode(md);
-            var s = masked.text;
-            var jobs = []; /* { start, end, url, build(uri)->string } */
-            var cache = Object.create(null); /* url -> Promise<uri|null> */
-
-            var addJob = function (start, end, url, build) {
-                jobs.push({ start: start, end: end, url: url, build: build });
-            };
-            var offset = function (args) {
-                return args[args.length - 2];
-            };
-
-            /* Inline images, angle-url form: ![alt](<url> "title") */
-            s.replace(
-                /!\[([^\]]*)\]\(\s*<([^<>]*)>(\s+(?:"([^"]*)"|'([^']*)'))?\s*\)/g,
-                function () {
-                    var a = Array.prototype.slice.call(arguments, 0, -2);
-                    var m = a[0];
-                    var off = offset(arguments);
-                    addJob(off, off + m.length, a[2], function (uri) {
-                        var t = a[4] != null ? a[4] : a[5];
-                        return (
-                            "![" + a[1] + "](" + uri +
-                            (t ? ' "' + t + '"' : "") + ")"
-                        );
-                    });
-                    return m;
-                },
-            );
-
-            /* Inline images, bare-url form: ![alt](url "title") */
-            s.replace(
-                /!\[([^\]]*)\]\(\s*([^()\s]+)(\s+(?:"([^"]*)"|'([^']*)'))?\s*\)/g,
-                function () {
-                    var a = Array.prototype.slice.call(arguments, 0, -2);
-                    var m = a[0];
-                    var off = offset(arguments);
-                    if (/^data:/i.test(a[2])) return m; /* already embedded */
-                    addJob(off, off + m.length, a[2], function (uri) {
-                        var t = a[4] != null ? a[4] : a[5];
-                        return (
-                            "![" + a[1] + "](" + uri +
-                            (t ? ' "' + t + '"' : "") + ")"
-                        );
-                    });
-                    return m;
-                },
-            );
-
-            /* <img src="…"> (and source-less forms are left alone). The
-               job covers only the url token; the rest of the tag survives. */
-            s.replace(
-                /(<img\b[^>]*?\bsrc\s*=\s*)(?:"([^"]*)"|'([^']*)'|([^\s>]+))/gi,
-                function () {
-                    var a = Array.prototype.slice.call(arguments, 0, -2);
-                    var m = a[0];
-                    var off = offset(arguments);
-                    var url = a[2] != null ? a[2] : a[3] != null ? a[3] : a[4];
-                    if (!url || !/^https?:\/\//i.test(url)) return m;
-                    var pre = a[1];
-                    var quote = a[2] != null ? '"' : a[3] != null ? "'" : "";
-                    addJob(
-                        off + pre.length,
-                        off + m.length,
-                        url,
-                        function (uri) {
-                            return pre + quote + uri + quote;
-                        },
-                    );
-                    return m;
-                },
-            );
-
-            /* Reference definitions that images resolve through. */
-            var imgLabels = Object.create(null);
-            s.replace(/!\[[^\]]*\]\[([^\]]*)\]/g, function (m, label) {
-                imgLabels[MediaTools.normLabel(label)] = true;
-                return m;
-            });
-            s.replace(/!\[([^\]]*)\](?![\[(])/g, function (m, label) {
-                imgLabels[MediaTools.normLabel(label)] = true;
-                return m;
-            });
-            s.replace(
-                /^[ \t]{0,3}\[([^\]]+)\]:[ \t]*<?([^\s>]*)>?(?:[ \t]+(?:"[^"]*"|'[^']*'|\([^)]*\)))?[ \t]*$/gm,
-                function (m, label, url, off) {
-                    if (
-                        !imgLabels[MediaTools.normLabel(label)] ||
-                        !/^https?:\/\//i.test(url)
-                    )
-                        return m;
-                    var at = m.indexOf(url);
-                    if (at === -1) return m;
-                    addJob(
-                        off + at,
-                        off + at + url.length,
-                        url,
-                        function (uri) {
-                            return m.slice(0, at) + uri + m.slice(at + url.length);
-                        },
-                    );
-                    return m;
-                },
-            );
-
-            if (!jobs.length) {
+            var urls;
+            try {
+                urls = MediaTools.collectTokenImageUrls(masked.text);
+            } catch (e) {
+                urls = [];
+            }
+            if (!urls.length) {
                 return Promise.resolve(
-                    MediaTools.unmaskCode(s, masked.stash),
+                    MediaTools.unmaskCode(masked.text, masked.stash),
                 );
             }
 
-            /* Unique job urls, then fetch them through a small pool — the
-               cache is primed HERE (not from it) so the replacement pass
-               below always finds settled values. */
-            var seen = Object.create(null);
-            var urls = [];
-            for (var i = 0; i < jobs.length; i++) {
-                var u = jobs[i].url;
-                if (u && !seen[u]) {
-                    seen[u] = true;
-                    urls.push(u);
-                }
-            }
+            /* Fetch each parsed image url once — dedupe + small pool; the
+               cache is primed HERE so the replacement pass below always
+               finds settled values. */
+            var cache = Object.create(null); /* url -> Promise<uri|null> */
             return MediaTools.mapPool(
                 urls,
                 function (u) {
@@ -3239,16 +3232,17 @@
                 },
                 5,
             ).then(function () {
-                var out = s;
-                jobs.sort(function (a, b) {
-                    return b.start - a.start;
+                /* Longest urls first, so a longer sibling that shares a
+                   prefix with a shorter one is rewritten before the
+                   shorter could match inside it. */
+                var ordered = urls.slice().sort(function (a, b) {
+                    return b.length - a.length;
                 });
-                for (var i = 0; i < jobs.length; i++) {
-                    var j = jobs[i];
-                    var uri = j.url ? cache[j.url] : null;
+                var out = masked.text;
+                for (var i = 0; i < ordered.length; i++) {
+                    var uri = cache[ordered[i]];
                     if (!uri) continue; /* fetch/type failure keeps the url */
-                    out =
-                        out.slice(0, j.start) + j.build(uri) + out.slice(j.end);
+                    out = MediaTools.replaceUrlExact(out, ordered[i], uri);
                 }
                 return MediaTools.tidyBlank(
                     MediaTools.unmaskCode(out, masked.stash),
@@ -3266,7 +3260,13 @@
                 return Promise.resolve(null);
             var p;
             try {
-                p = doFetch(url, { credentials: "omit" });
+                /* referrerPolicy: some hosts reject cross-origin fetches
+                   whose referrer looks foreign; asking to send none is the
+                   friendlier default for an embed probe. */
+                p = doFetch(url, {
+                    credentials: "omit",
+                    referrerPolicy: "no-referrer",
+                });
             } catch (e) {
                 return Promise.resolve(null);
             }
@@ -3312,24 +3312,22 @@
                 null;
         },
 
-        /* The FALLBACK identification means (1.8.3): reached when the
-           url's extension is missing or unrecognised. Content-type
-           first, against the standard-format allowlist; when it is
-           missing or generic (octet-stream and friends), sniff the
-           magic bytes. A server that answers "text/html" — or anything
-           else that is not on the list — is not an encodable image, no
-           matter what the bytes show. The returned mime is the
-           canonical type the data uri carries. */
+        /* The header check against the standard-format allowlist, then the
+           payload itself (1.8.4): whenever the header does not POSITIVELY
+           name a standard image type — absent, generic (octet-stream), or
+           mislabelled (svg shipped as text/xml, application/xml, even
+           text/html) — the bytes are the next and final authority. The
+           sniffer's patterns are strict, so a real png/jpeg/gif/webp/bmp/
+           ico/avif/svg signature embeds whatever the header claimed while
+           an html page, a pdf or any other non-image payload matches
+           nothing and keeps its url. A valid image is therefore never
+           rejected merely because its url lacks a conventional image
+           extension. The returned mime is the canonical type the data uri
+           carries. */
         resolveMime: function (ct, bytes) {
             ct = String(ct || "").split(";")[0].trim().toLowerCase();
             if (ct && MediaTools.EMBED_MIMES[ct])
                 return MediaTools.EMBED_MIMES[ct];
-            var generic =
-                !ct ||
-                ct === "application/octet-stream" ||
-                ct === "application/binary" ||
-                ct === "application/unknown";
-            if (!generic) return null;
             return MediaTools.sniffImage(bytes);
         },
 
@@ -4875,6 +4873,15 @@
             },
             embed: function (md) {
                 return MediaTools.embedImages(md);
+            },
+            /* Harness hook (1.8.4): the urls of the image nodes the parser
+               sees — the AST-driven detection stage of the embed pass. */
+            collect: function (md) {
+                try {
+                    return MediaTools.collectImageUrls(md);
+                } catch (e) {
+                    return [];
+                }
             },
             /* Harness hook (1.8.3): the extension-first format map —
                the first resort of the identification chain. */

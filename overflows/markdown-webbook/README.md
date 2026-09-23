@@ -75,7 +75,7 @@ controls:
 | Task lists | checkboxes are live — ticking one persists per document |
 | Panels | the contents drawer and the search layer are mutually exclusive — opening one dismisses the other |
 | Images | click to open the lightbox |
-| Remote media | document menu → **Fetch & embed remote media** (default off): **off** strips image/video/audio urls from every import (file, url, clipboard, dragged text) so the document reads and exports as pure local text; **on** downloads each image at import time and rewrites it as a `data:image/…` uri inside the source, so images survive every export path. The standard image formats are encoded — png, jpg/jpeg, gif, webp, svg (image/svg+xml), bmp, ico and avif — identified **by file extension first** (a recognised ending names the canonical type outright, so svg shipped as `text/xml` embeds), with the content-type allowlist (aliases like `image/jpg` and `image/ico` resolved to their canonical types) plus a magic-byte sniff that covers svg and avif kept as the fallback for unrecognised or missing extensions. Media-ness is decided by the construct a url appears in (markdown image syntax, `<img>`/`<video>`/`<audio>`/`<picture>` tags) — never by file extension — and fenced code blocks and inline code spans are always left untouched. Images that fail to fetch or aren't images keep their original url |
+| Remote media | document menu → **Fetch & embed remote media** (default off): **off** strips image/video/audio urls from every import (file, url, clipboard, dragged text) so the document reads and exports as pure local text; **on** downloads each image at import time and rewrites it as a `data:image/…` uri inside the source, so images survive every export path. Detection is AST-driven and part of the Markdown → HTML conversion: image nodes are collected from the parsed token tree (inline, angle, titled, multi-line-title, reference and raw `<img>` forms, at any nesting depth), so no construct the parser accepts can be missed. The standard formats are encoded — png, jpg/jpeg, gif, webp, svg (image/svg+xml), bmp, ico and avif — identified by a three-step chain: the url's file extension, then the response Content-Type (aliases like `image/jpg` resolved to canonical types), then the payload's magic bytes — so a real image is never rejected merely for lacking a conventional extension, and mislabelled servers (svg shipped as `text/xml` or even `text/html`) still embed. Media-ness is decided by the construct a url appears in — never by file extension — and code blocks, code spans and indented code are always left untouched. A resource the pass cannot read (network failure, non-2xx, or a server that sends no CORS header so the browser refuses byte access from `file://`) keeps its original url and still displays via the remote src; images that are demonstrably not images keep their url too |
 | Progress | slim bottom progress bar tracks reading position |
 
 **Raw HTML policy** is a reading setting (`Raw HTML: Sanitise / Strip`). It
@@ -208,7 +208,7 @@ npm run verify      # node tools/verify_refactor.js
 ```
 
 This executes the built file inside jsdom (real marked, real DOMPurify, real
-app pipeline) and runs **178 checks**: the 44-construct Markdown corpus
+app pipeline) and runs **181 checks**: the 44-construct Markdown corpus
 (parser correctness, sanitisation policy, embed containment), integration
 flows (import, settings persistence, TOC/scrollspy, command palette,
 highlighting, lightbox), the publication suite (1:1 replica, authoring
@@ -219,23 +219,26 @@ embed-toggle persistence, strip/embed media passes, clipboard paste flow and
 guards, sanitiser data-uri policy), the v1.8.2 suite (the standard-format
 embed allowlist with svg/avif sniffs, the paste keyboard shortcut with its
 guards and help-panel row, exact-capture metadata save across every title
-surface) and the v1.8.3 suite (extension-first format identification:
-standard endings map to canonical types, a recognised extension embeds
-whatever the header claims, unrecognised extensions still fall back to
-header + sniff). Current status: **178 / 178 pass**.
+surface), the v1.8.3 suite (extension-first identification) and the v1.8.4
+suite (AST-driven detection covering paren urls, multi-line titles,
+reference forms, nesting and raw `<img>` with code protection; the
+three-step identification chain ending in the payload's bytes; boundary-
+checked rewrites for prefix-sharing urls; and the exact wikimedia .PNG +
+usefresh .svg reproduction case). Current status: **181 / 181 pass**.
 
-An optional Chromium visual smoke (`tools/smoke_v183.py`,
+An optional Chromium visual smoke (`tools/smoke_v184.py`,
 `pip install playwright && playwright install chromium`) drives the real
 browser across the latest refinements — the menu placements, the url modal's
 shell metrics and loading spinner, silent success vs error toasts over
 intercepted routes, the extension-aware Download label, clipboard paste with
 stubbed clipboard payloads, image embedding into data uris over an
 intercepted image route (png plus generic-served svg and avif), the
-extension-first identification (a `.svg` url served as `text/xml` embeds,
-an extensionless url still sniffs), the
-Ctrl/Cmd+Shift+V shortcut with its toasts and help-panel row, the
+extension-first identification, the exact reproduction case (a wikimedia
+`.PNG` url and a usefresh.dev `.svg` url both embed as data uris over
+intercepted readable routes), the unreadable-resource url-keep contract,
+the Ctrl/Cmd+Shift+V shortcut with its toasts and help-panel row, the
 metadata save flow across tab/toolbar/footer — and screenshots each state.
-Current status: **30 / 30 pass**.
+Current status: **32 / 32 pass**.
 
 ## Repository layout
 
@@ -261,8 +264,8 @@ markdown-webbook/
 │   ├── markdown_webbook_audit.md           ← the 20-section audit that drove the refactors
 │   └── quality-of-life-improvement-plan.md ← milestone plan (M0–M5) + feature proposals
 └── tools/
-    ├── verify_refactor.js                  ← 178-check jsdom verification harness
-    └── smoke_v183.py                       ← Chromium visual smoke (Playwright)
+    ├── verify_refactor.js                  ← 181-check jsdom verification harness
+    └── smoke_v184.py                       ← Chromium visual smoke (Playwright)
 ```
 
 ## Version history
@@ -285,6 +288,7 @@ markdown-webbook/
 | 1.8.1 | **Paste from clipboard** (doc-menu item below *Open from url…*: clipboard read via the async items API with text/plain type inspection — non-text, empty and denied clipboards each get a specific error toast, text content renders through the media pipeline with the usual success toast) and **Fetch & embed remote media** (doc-menu switch above *Include document menu in publication*, default off): off strips media (image/video/audio) constructs from every import, on fetches each image once at import time (content-type + magic-byte check, per-image failure fallback, dedupe + concurrency pool) and rewrites it into a sanitiser-allowed `data:image/*` uri so exports carry the images; media detection is structural (markdown syntax + media HTML tags), code spans/fences are protected; both new items are always excluded from publications; *Edit HTML metadata* regrouped into its own menu section below *Print / save as PDF* |
 | 1.8.2 | **Wider embed format range**: the embed pass encodes the standard image formats — png, jpg/jpeg, gif, webp, svg (image/svg+xml), bmp, ico and avif — through an explicit allowlist that canonicalises aliases (`image/jpg` → jpeg, `image/svg` → svg+xml, `image/ico`/`image/vnd.microsoft.icon` → x-icon), with the magic-byte sniffer extended to svg (xml prolog/doctype + `<svg` root) and avif (`ftyp` box brands avif/avis/av01) for generically-served payloads; **Paste-from-clipboard keyboard shortcut** (<kbd>Ctrl</kbd>/<kbd>Cmd</kbd>+<kbd>Shift</kbd>+<kbd>V</kbd>): same guarded flow as the menu item with success/error toasts, listed in the Help panel, skipped inside editable controls and not installed in publications (row + listener removed); **exact-capture metadata save**: an empty field clears its entry in the store (a cleared title reads as *Untitled*), and the captured title is applied to every surface that names the document — toolbar, footer, browser tab, the form's placeholder, download naming, the publication head — and survives a refresh |
 | 1.8.3 | **Extension-first image format identification**: a url whose last path segment ends in a standard format — `.png`, `.jpg`/`.jpeg`, `.gif`, `.webp`, `.svg`, `.bmp`, `.ico`, `.avif`, case-insensitively, ignoring any query string or fragment — is embedded as that canonical type outright, whatever the response header claims; this fixes svg images (routinely served as `text/xml`/`application/xml`) staying remote urls under the header-first check of 1.8.2. An unrecognised or missing extension falls through to the already-implemented means — the content-type allowlist with its canonical aliases, then the magic-byte sniffer (which also still covers generically-served svg and avif). A fetch that fails, a non-2xx response or an oversized payload still keeps the original url |
+| 1.8.4 | **AST-driven, conversion-integrated embedding**: image nodes are identified from the parsed token tree (marked lexer walk — inline/angle/titled/multi-line-title/reference forms with resolved hrefs, raw `<img src>` in html tokens, at any nesting depth in quotes, lists and tables) instead of pattern-scanning the source text, so every construct the parser accepts is embedded; rewrites are exact, boundary-checked url replacements in descending-length order (prefix-sharing urls never mangle each other), and indented code blocks are now protected too. **Three-step resource detection**: file extension → response Content-Type (canonicalising allowlist) → the payload's magic bytes as the final authority, so a real image is never rejected merely for lacking a conventional image extension (an extensionless svg shipped as `text/xml`/`application/xml`/`text/html` now embeds; an html page, pdf or tiff payload still matches nothing and keeps its url). Fetch probes send no referrer. The reproduction case — a wikimedia `.PNG` image and a usefresh.dev `.svg` image in one document — embeds both as data uris (verified e2e); a resource the browser cannot byte-read (e.g. a server sending no `access-control-allow-origin` header, as usefresh.dev does in the wild) keeps its original url and still displays via the remote src |
 
 ## Compatibility
 

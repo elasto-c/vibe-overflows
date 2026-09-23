@@ -39,12 +39,12 @@ video and audio urls out of the source, so the document reads — and
 exports — as pure local text. **On** downloads every image the moment the
 document is imported and rewrites it as data embedded in the file itself,
 so the images survive every export path: Download .md, both HTML exports
-and print. The standard image formats are encoded — png, jpg/jpeg, gif,
-webp, svg, bmp, ico and avif — identified by file extension first (a
-recognised ending names the type outright, so a `.svg` served as
-`text/xml` still embeds), with content-type plus magic-byte sniffing as
-the fallback for unrecognised or missing extensions. Either way the
-decision is made at import time and the choice is remembered on this
+and print. Every image node the parser produces is detected and encoded —
+png, jpg/jpeg, gif, webp, svg, bmp, ico and avif — with the format
+identified by a three-step chain: the url's file extension, then the
+response content type, then the payload's magic bytes, so a real image is
+never rejected merely for lacking a conventional extension. Either way
+the decision is made at import time and the choice is remembered on this
 device.
 
 ## What the reader supports

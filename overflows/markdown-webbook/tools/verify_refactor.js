@@ -1679,11 +1679,16 @@ setTimeout(() => {
     ].every(([ct, want]) => rm(ct, png) === want);
     const params = rm("image/svg+xml; charset=utf-8", png) === "image/svg+xml";
     const ci = rm("IMAGE/PNG", png) === "image/png";
-    const foreign = rm("image/tiff", png) === null &&
-      rm("text/html", png) === null && rm("application/pdf", png) === null;
-    return canonical && params && ci && foreign
+    /* 1.8.4: the bytes are the final authority — a foreign header no longer
+       vetoes a real image payload; junk payloads still match nothing. */
+    const junk = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14];
+    const foreign = rm("image/tiff", junk) === null &&
+      rm("text/html", junk) === null && rm("application/pdf", junk) === null;
+    const bytesWin = rm("text/html", png) === "image/png" &&
+      rm("application/pdf", png) === "image/png";
+    return canonical && params && ci && foreign && bytesWin
       ? ok() : bad("canon=" + canonical + " params=" + params +
-                   " ci=" + ci + " foreign=" + foreign);
+                   " ci=" + ci + " foreign=" + foreign + " bytes=" + bytesWin);
   });
   check("N02", "magic-byte sniff gained svg + avif; binaries regress-none", () => {
     const rm = W.media.resolveMime;
@@ -1797,12 +1802,16 @@ setTimeout(() => {
       ? ok("text/xml + text/html both embedded via .svg")
       : bad("xml=" + xmlOk + " html=" + htmlOk + " out=" + out.slice(0, 120));
   });
-  checkA("N13", "unrecognised extension still falls back to header + sniff", async (Wl) => {
+  checkA("N13", "unrecognised extension falls back to headers, then the bytes", async (Wl) => {
     Wl.media.setEnabled(true);
     const prevFetch = window.fetch;
     const svgStr = '<svg xmlns="http://www.w3.org/2000/svg"><rect width="4" height="4"/></svg>';
     const svgBytes = new Uint8Array(
       Array.prototype.map.call(svgStr, (c) => c.charCodeAt(0)),
+    );
+    const htmlDoc = "<!DOCTYPE html><html><body>nope</body></html>";
+    const htmlBytes = new Uint8Array(
+      Array.prototype.map.call(htmlDoc, (c) => c.charCodeAt(0)),
     );
     const resp = (buf, ct) => ({
       ok: true, status: 200, statusText: "OK",
@@ -1811,18 +1820,129 @@ setTimeout(() => {
     });
     window.fetch = (u) => /rawbin/.test(u)
       ? Promise.resolve(resp(svgBytes, "application/octet-stream"))
-      : Promise.resolve(resp(svgBytes, "text/html"));
+      : /note/.test(u)
+        ? Promise.resolve(resp(svgBytes, "text/html"))
+        : Promise.resolve(resp(htmlBytes, "text/html"));
     const out = await Wl.media.prepare(
-      "![r](https://img/rawbin) and ![n](https://img/note)",
+      "![r](https://img/rawbin) and ![n](https://img/note) and ![p](https://img/page)",
     );
     const sniffOk = out.indexOf("![r](data:image/svg+xml;base64,") === 0;
-    const foreignKept = out.indexOf("![n](https://img/note)") !== -1 &&
-      out.indexOf("![n](data:") === -1;
+    /* 1.8.4: the bytes override a foreign header — a real svg shipped as
+       text/html embeds, while an actual html page still keeps its url. */
+    const bytesWin = out.indexOf("![n](data:image/svg+xml;base64,") !== -1;
+    const pageKept = out.indexOf("![p](https://img/page)") !== -1 &&
+      out.indexOf("![p](data:") === -1;
     Wl.media.setEnabled(false);
     window.fetch = prevFetch;
-    return sniffOk && foreignKept
-      ? ok("sniff embedded rawbin; text/html note kept its url")
-      : bad("sniff=" + sniffOk + " kept=" + foreignKept + " out=" + out.slice(0, 120));
+    return sniffOk && bytesWin && pageKept
+      ? ok("octet-stream + text/html svg bytes embed; html page kept")
+      : bad("sniff=" + sniffOk + " bytes=" + bytesWin + " kept=" + pageKept +
+            " out=" + out.slice(0, 140));
+  });
+
+  /* ---------------- v1.8.4: AST-driven embed + repro cases ---------------- */
+
+  check("N14", "AST detection: every parsed image node is collected", () => {
+    const src = [
+      "# K", "",
+      "![plain](https://x/a.png)",
+      "![angle](<https://x/b.png>)",
+      "![paren](https://x/c(1).png)",
+      "![titled](https://x/e.png \"T\")",
+      "![mline](https://x/k.png",
+      "\"t\")",
+      "![ref][r1]", "",
+      "[r1]: https://x/d.svg", "",
+      "> ![quoted](https://x/f.png)", "",
+      "- ![listed](https://x/g.png)", "",
+      "| ![tabled](https://x/h.png) |", "",
+      "| --- |", "",
+      "<img src=\"https://x/i.png\" alt=\"raw\">", "",
+      "`![code](https://x/skip1.png)`", "",
+      B, "![fenced](https://x/skip2.png)", B, "",
+      "    ![indented](https://x/skip3.png)", "",
+      "![data](data:image/png;base64,iVBOR)", "",
+      "![rel](/local.png)", "",
+      "[link only](https://x/j.png)", "",
+    ].join("\n");
+    const urls = W.media.collect(src);
+    const want = ["https://x/a.png", "https://x/b.png", "https://x/c(1).png",
+      "https://x/d.svg", "https://x/e.png", "https://x/f.png",
+      "https://x/g.png", "https://x/h.png", "https://x/i.png",
+      "https://x/k.png"];
+    const missing = want.filter((u) => urls.indexOf(u) === -1);
+    const noJunk = urls.every((u) =>
+      u !== "https://x/skip1.png" && u !== "https://x/skip2.png" &&
+      u !== "https://x/skip3.png" && u !== "https://x/j.png" &&
+      u !== "/local.png" && u.indexOf("data:") !== 0);
+    return !missing.length && noJunk
+      ? ok("collected " + urls.length +
+           " urls incl. paren/multi-line/reference/img-src nesting")
+      : bad("missing=" + JSON.stringify(missing) +
+            " junk=" + JSON.stringify(urls));
+  });
+  checkA("N15", "repro: wikimedia .PNG and usefresh .svg both embed", async (Wl) => {
+    Wl.media.setEnabled(true);
+    const prevFetch = window.fetch;
+    const svgStr = '<svg xmlns="http://www.w3.org/2000/svg"><rect width="8" height="8"/></svg>';
+    const svgBytes = new Uint8Array(
+      Array.prototype.map.call(svgStr, (c) => c.charCodeAt(0)),
+    );
+    const png = new Uint8Array([
+      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0,
+    ]);
+    const resp = (buf, ct) => ({
+      ok: true, status: 200, statusText: "OK",
+      headers: { get: (k) => (/content-type/i.test(k) ? ct : null) },
+      arrayBuffer: () => Promise.resolve(buf),
+    });
+    window.fetch = (u) => /wikimedia/.test(u)
+      ? Promise.resolve(resp(png, "image/png"))
+      : Promise.resolve(resp(svgBytes, "image/svg+xml"));
+    const md = [
+      "`image 1` embeds successfully",
+      "![image 1](https://upload.wikimedia.org/wikipedia/commons/e/ef/X%5E4_-_4%5Ex.PNG)",
+      "",
+      "`image 2` does not embed; the link is untouched",
+      "![image 2](https://usefresh.dev/docs/architecture-flow-v2.svg)",
+    ].join("\n");
+    const out = await Wl.media.prepare(md);
+    const pngOk = out.indexOf("![image 1](data:image/png;base64,") !== -1;
+    const svgOk = out.indexOf("![image 2](data:image/svg+xml;base64,") !== -1;
+    const clean = out.indexOf("upload.wikimedia.org") === -1 &&
+      out.indexOf("usefresh.dev") === -1;
+    Wl.media.setEnabled(false);
+    window.fetch = prevFetch;
+    return pngOk && svgOk && clean
+      ? ok("both repro images embedded; no remote urls left")
+      : bad("png=" + pngOk + " svg=" + svgOk + " clean=" + clean +
+            " out=" + out.slice(0, 160));
+  });
+  checkA("N16", "prefix-sharing urls each rewrite exactly", async (Wl) => {
+    Wl.media.setEnabled(true);
+    const prevFetch = window.fetch;
+    const png = new Uint8Array([
+      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0,
+    ]);
+    const resp = (buf, ct) => ({
+      ok: true, status: 200, statusText: "OK",
+      headers: { get: (k) => (/content-type/i.test(k) ? ct : null) },
+      arrayBuffer: () => Promise.resolve(buf),
+    });
+    window.fetch = () => Promise.resolve(resp(png, "application/octet-stream"));
+    const out = await Wl.media.prepare(
+      "![a](https://x/p.png) then ![b](https://x/p.png?raw=1)",
+    );
+    const aOk = out.indexOf("![a](data:image/png;base64,") === 0;
+    const bOk = out.indexOf("![b](data:image/png;base64,") !== -1;
+    const noMangle = out.indexOf("?raw=1") === -1 &&
+      out.indexOf("https://x/p.png") === -1;
+    Wl.media.setEnabled(false);
+    window.fetch = prevFetch;
+    return aOk && bOk && noMangle
+      ? ok("shared-prefix urls both embedded, nothing mangled")
+      : bad("a=" + aOk + " b=" + bOk + " clean=" + noMangle +
+            " out=" + out.slice(0, 160));
   });
   checkA("N04", "keyboard shortcut pastes the clipboard with success toast", async (Wl) => {
     Wl.openMarkdown("# Seed\n\nbefore shortcut");
@@ -2252,6 +2372,7 @@ setTimeout(() => {
   console.log("v1.8.1 additions: Paste from clipboard (doc-menu item, text/type inspection with error toasts, success toast via render) and the Fetch & embed remote media switch (default off; off strips media constructs at import, on rewrites image urls to sanitiser-allowed data uris), both load-path wired (file/url/clipboard/drag) and excluded from publications; Edit HTML metadata regrouped under Print / save as PDF");
   console.log("v1.8.2 additions: embed allowlist widened to the standard image formats (png/jpg/jpeg/gif/webp/svg+xml/bmp/ico/avif with canonical aliases + svg/avif magic-byte sniffs), Paste-from-clipboard keyboard shortcut (Ctrl/Cmd+Shift+V, toasts, help-panel row, dropped from publications), and exact-capture metadata save (empty field clears the entry, cleared title reads Untitled, captured title applied to toolbar/footer/tab/placeholder/downloads/exports)");
   console.log("v1.8.3 additions: image format identification is extension-first (a recognised png/jpg/jpeg/gif/webp/svg/bmp/ico/avif ending names the canonical type outright — svg served as text/xml now embeds) with the content-type allowlist + magic-byte sniff kept as the fallback for unrecognised or missing extensions");
+  console.log("v1.8.4 additions: the embed pass is AST-driven and conversion-integrated (image nodes collected from the parsed token tree — paren urls, multi-line titles, references, nesting, <img> — with boundary-checked exact rewrites), and the detection chain ends in the payload's magic bytes (extension, then Content-Type, then the bytes — a real image is never rejected for lacking an extension); repro-case suite covers the wikimedia .PNG + usefresh .svg pair");
   process.exit(fail + crash > 0 ? 1 : 0);
   }
 }, 150);
