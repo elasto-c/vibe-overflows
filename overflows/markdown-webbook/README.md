@@ -74,8 +74,8 @@ controls:
 | Tables | columns hold a single line until they would exceed half the container (`--wb-col-cap`, container-query math), then wrap; a genuinely unbreakable line pans a complete table box with hidden scrollbars, mouse drag, and scroll-driven edge shadows that render only while the table actually pans |
 | Task lists | checkboxes are live — ticking one persists per document |
 | Panels | the contents drawer and the search layer are mutually exclusive — opening one dismisses the other |
-| Images | click to open the lightbox |
-| Remote media | document menu → **Embed remote media** (default off): **off** strips image/video/audio urls from every import (file, url, clipboard, dragged text) so the document reads and exports as pure local text; **on** embeds each rendered remote image as a base64 `data:image/…` uri **through the browser's own image load** — no programmatic request is ever issued. The document is parsed and compiled to HTML exactly as usual; the pass then walks the rendered content, finds every `<img>` the browser loaded natively, re-requests each url through a CORS-approved probe image (served by the browser cache), draws the decoded pixels onto an offscreen canvas and encodes them with `toDataURL()` — the same transport browsers use to display images, which is precisely what survives the cross-origin rules that block programmatic byte access from `file://` and localhost alike. The data uri replaces the remote url in the live DOM, in any `<a href>` that targets the same url (linked badges), and in the document source, so embeddings survive a refresh and every export path. Because detection runs over the compiled DOM, examples inside code fences, code spans and indented blocks are structurally excluded — and a CORS-approved image embeds whatever its url extension or Content-Type claims, since the browser itself decodes the bytes. A server that sends no `access-control-allow-origin` header keeps its image displaying via the remote src while the canvas stays unreadable — such a url is kept, honestly |
+| Images | click to open the lightbox — the preview fills the viewport's safe area with `object-fit: contain`, never touches an edge, and the floating close button never overlaps the image |
+| Remote media | document menu → **Strip remote media** (default off): **off** passes remote media through untouched — every `https://` image, video and audio url renders from its source and survives into every export, exactly as the author wrote it. **on** runs a privacy pass over the source BEFORE it is rendered or stored: image, video and audio constructs are removed (markdown images incl. reference/shorthand forms and linked badges, raw HTML `video`/`audio`/`picture` with their content, `img`/`source`/`track` tags), so the document reads and exports as pure local text. Links, text and code survive, and examples inside code fences, code spans and indented blocks are structurally protected — which urls count as media is decided by the construct they appear in, never by extension. The decision is applied at import time across all four import routes (file picker, drag & drop, Open from url…, Paste from clipboard) and remembered on this device |
 | Progress | slim bottom progress bar tracks reading position |
 
 **Raw HTML policy** is a reading setting (`Raw HTML: Sanitise / Strip`). It
@@ -104,7 +104,7 @@ pipeline, in menu order:
    applied everywhere the document is named (toolbar, footer, browser tab,
    the form's own placeholder, download naming and every export) and
    survives a refresh.
-2. **Embed remote media** — the import-time media switch described
+2. **Strip remote media** — the import-time media switch described
    above; it shapes what the exported editions contain.
 3. **Include document menu in publication** — a toggle that decides whether
    the exported edition shows the document button and menu at all. Off (the
@@ -114,7 +114,7 @@ pipeline, in menu order:
    code/table/print behaviour. Exactly seven authoring exceptions are
    removed from the replica's document menu — *Open Markdown file…*, *Open
    from url…*, *Paste from clipboard*, *Edit HTML metadata*, *Export
-   publishable HTML*, the *Embed remote media* switch and the
+   publishable HTML*, the *Strip remote media* switch and the
    *Include document menu in publication* switch — so a publication never
    carries a file-open, clipboard-paste, network-fetch or metadata entry
    point. The open-file (<kbd>Ctrl</kbd>+<kbd>O</kbd>), paste-from-clipboard
@@ -208,41 +208,38 @@ npm run verify      # node tools/verify_refactor.js
 ```
 
 This executes the built file inside jsdom (real marked, real DOMPurify, real
-app pipeline) and runs **181 checks**: the 44-construct Markdown corpus
+app pipeline) and runs **175 checks**: the 44-construct Markdown corpus
 (parser correctness, sanitisation policy, embed containment), integration
 flows (import, settings persistence, TOC/scrollspy, command palette,
 highlighting, lightbox), the publication suite (1:1 replica, authoring
 exclusions, metadata round-trip, hostile-content containment), the print
 pipeline, the v1.8.0 suite (url import success/failure/loading, mdx
 naming, panel exclusivity, z-order), the v1.8.1 suite (menu placements,
-embed-toggle persistence, strip/embed media passes, clipboard paste flow and
-guards, sanitiser data-uri policy), the v1.8.2 suite (the standard-format
-embed allowlist with svg/avif sniffs, the paste keyboard shortcut with its
-guards and help-panel row, exact-capture metadata save across every title
-surface) and the v1.8.5 suite (native capture: DOM
-detection covering every rendered image form with code, data, relative and
-link-only urls excluded; the automatic path synchronising DOM, source and
-storage with failures keeping their urls; badge-link swaps and fenced-code
-protection; graceful degradation when every capture fails; idempotent
-re-imports of captured documents; the pixel/encode caps and the
-never-settling-probe timeout; exact rewrites for prefix-sharing urls; the
-wikimedia .PNG + usefresh .svg reproduction pair; and a zero-`fetch()`
-proof). Current status: **181 / 181 pass**.
+strip-toggle persistence, strip media pass, clipboard paste flow and
+guards, sanitiser data-uri policy) and the v1.8.6 suite (dead-embed purge
+proof over the compiled bundle, the passthrough/strip pipeline across the
+import routes, the readText direct-user-gesture call-stack proof and the
+guard toasts for non-text/empty/denied clipboards). Current status:
+**175 / 175 pass**.
 
-An optional Chromium visual smoke (`tools/smoke_v185.py`,
+An optional Chromium visual smoke (`tools/smoke_v186.py`,
 `pip install playwright && playwright install chromium`) drives the real
 browser across the latest refinements — the menu placements and the renamed
-**Embed remote media** toggle, the url modal's shell metrics and loading
+**Strip remote media** toggle, the url modal's shell metrics and loading
 spinner, silent success vs error toasts over intercepted routes, the
-extension-aware Download label, clipboard paste with stubbed clipboard
-payloads, **real native image capture against a local HTTP server that
-serves genuine CORS semantics** (an ACAO png and svg captured into data
-uris with a zero-`fetch()` assertion, the badge link swapped, the source
-document persisted with the data uri, and a no-ACAO response provably
-keeping its remote url while the image still displays — a boundary route
-fulfillment cannot simulate), the Ctrl/Cmd+Shift+V shortcut with its toasts
-and help-panel row, the metadata save flow across tab/toolbar/footer — and
-screenshots each state. Current status: **33 / 33 pass**.
+extension-aware Download label, clipboard paste with stubbed `readText`
+payloads, **strip mode end-to-end** (switch on: the image is removed before
+render with zero network requests and the stored source is already clean;
+switch off: the remote url renders from a real local HTTP server and
+survives into storage), **the native clipboard path** (real
+`navigator.clipboard.readText` denied on an ungranted origin with a clear
+toast, and a synchronous call-stack proof that the read fires inside the
+click gesture), the Ctrl/Cmd+Shift+V shortcut with its toasts and
+help-panel row, **the lightbox layout** (`object-fit: contain`, 64/20 px
+safe-area padding, the image box measured inside the viewport with zero
+overlap against the floating close button and the exact intrinsic aspect
+ratio), the metadata save flow across tab/toolbar/footer — and screenshots
+each state. Current status: **39 / 39 pass**.
 
 ## Repository layout
 
@@ -268,8 +265,8 @@ markdown-webbook/
 │   ├── markdown_webbook_audit.md           ← the 20-section audit that drove the refactors
 │   └── quality-of-life-improvement-plan.md ← milestone plan (M0–M5) + feature proposals
 └── tools/
-    ├── verify_refactor.js                  ← 181-check jsdom verification harness
-    └── smoke_v185.py                       ← Chromium visual smoke (Playwright)
+    ├── verify_refactor.js                  ← 175-check jsdom verification harness
+    └── smoke_v186.py                       ← Chromium visual smoke (Playwright)
 ```
 
 ## Version history
@@ -294,17 +291,18 @@ markdown-webbook/
 | 1.8.3 | **Extension-first image format identification**: a url whose last path segment ends in a standard format — `.png`, `.jpg`/`.jpeg`, `.gif`, `.webp`, `.svg`, `.bmp`, `.ico`, `.avif`, case-insensitively, ignoring any query string or fragment — is embedded as that canonical type outright, whatever the response header claims; this fixes svg images (routinely served as `text/xml`/`application/xml`) staying remote urls under the header-first check of 1.8.2. An unrecognised or missing extension falls through to the already-implemented means — the content-type allowlist with its canonical aliases, then the magic-byte sniffer (which also still covers generically-served svg and avif). A fetch that fails, a non-2xx response or an oversized payload still keeps the original url |
 | 1.8.4 | **AST-driven, conversion-integrated embedding**: image nodes are identified from the parsed token tree (marked lexer walk — inline/angle/titled/multi-line-title/reference forms with resolved hrefs, raw `<img src>` in html tokens, at any nesting depth in quotes, lists and tables) instead of pattern-scanning the source text, so every construct the parser accepts is embedded; rewrites are exact, boundary-checked url replacements in descending-length order (prefix-sharing urls never mangle each other), and indented code blocks are now protected too. **Three-step resource detection**: file extension → response Content-Type (canonicalising allowlist) → the payload's magic bytes as the final authority, so a real image is never rejected merely for lacking a conventional image extension (an extensionless svg shipped as `text/xml`/`application/xml`/`text/html` now embeds; an html page, pdf or tiff payload still matches nothing and keeps its url). Fetch probes send no referrer. The reproduction case — a wikimedia `.PNG` image and a usefresh.dev `.svg` image in one document — embeds both as data uris (verified e2e); a resource the browser cannot byte-read (e.g. a server sending no `access-control-allow-origin` header, as usefresh.dev does in the wild) keeps its original url and still displays via the remote src |
 | 1.8.5 | **Native browser image capture — the fetch-based embed transport is gone**: with *Embed remote media* on, the document is parsed and compiled exactly as usual and the pass then walks the rendered DOM, finds every `<img>` the browser loaded natively, re-requests each url through a CORS-approved probe image (browser-cache served), draws the decoded pixels onto an offscreen canvas and encodes them with `toDataURL()` — no `fetch()` anywhere, so the cross-origin rules that block programmatic byte access from `file://`/localhost never apply to the transport. Data uris are swapped into the live `<img>` elements (plus any `<a href>` targeting the same url — linked badges), the source text is rewritten once with code masked out, and the rewrite is re-persisted so embeddings survive refresh and every export; the pass is idempotent and its environment adapters (probe loader, canvas) are injectable for testing. Per-image failures — including a real server that sends no `access-control-allow-origin` header — keep the remote url with the image still displaying; pixel-count, data-uri-size and never-settling-load caps keep absurd images out. The 1.8.2–1.8.4 extension/header/magic-byte identification chain is retired: a CORS-approved image embeds whatever its url or header claims, because the browser decodes the bytes |
+| 1.8.6 | **Media pipeline simplified — the Data URI embedding engine is retired**: the *Embed remote media* switch becomes **Strip remote media** (default off): off passes remote media through untouched — no network fetching, no Data URI conversion, no rewriting; on runs the 1.8.1 media-stripping AST pass over the source before it is rendered AND stored, across all four import routes (file picker, drag & drop, Open from url…, Paste from clipboard). All embedding machinery is deleted from the bundle (capture/canvas/env adapters, concurrency pool, exact-rewrite utilities, the 1.8.2–1.8.4 identification chain, the `mdwb:embedMedia` switch — its stale storage key is deleted on boot), the sanitiser's `data:image` branch reverts with it (data: links stay blocked; data: payloads on media elements fall back to DOMPurify's stock vendor default), and the retired embed-era smoke suites are archived. **Image lightbox layout**: the preview scales across its constraining dimension with `object-fit: contain` (no crop, no stretch), inside an explicit viewport safe area (64 px top, 20 px sides/bottom, safe-area insets included) whose top band reserves the floating close button's row — the control can never overlap or obscure any part of the image. **Clipboard permission workflow**: Paste from clipboard and its Ctrl/Cmd+Shift+V shortcut invoke `navigator.clipboard.readText()` synchronously inside the direct user-gesture call stack — the native permission prompt appears whenever the origin's clipboard-read state is `prompt`; a granted read flows through the media pipeline per the Strip remote media state, while denied/dismissed prompts, non-text clipboards (NotFoundError) and empty payloads each surface a specific non-intrusive error toast |
 
 ## Compatibility
 
 Modern Chromium, Firefox, Safari and Edge. Works from `file://` or any static
 host. No network access is required except where you ask for it: the
-**Open from url…** fetch requests exactly the address you type, and the
-**Embed remote media** switch re-requests exactly the image urls inside
-documents you import — through the browser's own image loader, and only
-from hosts that allow the cross-origin read; a host that refuses keeps
-its images displaying from the remote url. **Paste from clipboard** uses
-the browser's async
-clipboard API — most browsers ask for permission on first use, and a denied
-prompt (or a clipboard holding no text) surfaces a clear error toast rather
-than a broken import. Nothing else ever leaves the device.
+**Open from url…** fetch requests exactly the address you type. Remote media
+inside imported documents is loaded the way the browser loads any image —
+only when *Strip remote media* is off, and never re-fetched or converted by
+the app itself. **Paste from clipboard** uses the browser's async clipboard
+API (`navigator.clipboard.readText()`, invoked directly inside the click or
+keystroke so the native permission prompt can appear) — most browsers ask
+for permission on first use, and a denied prompt, a prompt dismissal or a
+clipboard holding no text surfaces a clear error toast rather than a broken
+import. Nothing else ever leaves the device.

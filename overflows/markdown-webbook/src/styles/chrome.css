@@ -483,7 +483,7 @@
                 min-width: 0;
                 flex: 1 1 auto;
             }
-            #mi-embed .mi-label,
+            #mi-strip .mi-label,
             #mi-pubmenu .mi-label {
                 color: var(--text-color);
                 white-space: normal;

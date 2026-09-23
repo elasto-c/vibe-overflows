@@ -1105,7 +1105,7 @@ setTimeout(() => {
     const expected = [
       "mi-open", "mi-open-url", "mi-paste", "mi-copy-md", "mi-copy-text",
       "mi-download", "mi-export", "mi-publish", "mi-print", "mi-meta",
-      "mi-embed", "mi-pubmenu",
+      "mi-strip", "mi-pubmenu",
     ];
     const same =
       ids.length === expected.length &&
@@ -1152,7 +1152,7 @@ setTimeout(() => {
       /<div id="mf-desc" class="meta-edit" contenteditable="true"/.test(html);
     const btn38 = /\.mbtn\s*{[^}]*height:\s*38px/.test(html);
     const save = /\.mbtn\.primary\s*{[^}]*background:\s*var\(--text-color\)[^}]*color:\s*var\(--bg-color\)/.test(html);
-    const label = /#mi-embed \.mi-label,\s*#mi-pubmenu \.mi-label\s*{[^}]*color:\s*var\(--text-color\)/.test(html);
+    const label = /#mi-strip \.mi-label,\s*#mi-pubmenu \.mi-label\s*{[^}]*color:\s*var\(--text-color\)/.test(html);
     return token && row38 && sub && edit && btn38 && save && label
       ? ok() : bad("token=" + token + " row=" + row38 + " sub=" + sub +
                    " edit=" + edit + " btn=" + btn38 + " save=" + save +
@@ -1428,13 +1428,13 @@ setTimeout(() => {
                    " toast=" + toastText());
   });
   /* ------- v1.8.1: paste from clipboard + remote media pipeline ------- */
-  check("M01", "menu: paste + embed placements, meta below print, toggle off", () => {
+  check("M01", "menu: paste + strip placements, meta below print, toggle off", () => {
     const menu = doc.getElementById("doc-menu");
     const openUrl = doc.getElementById("mi-open-url");
     const paste = doc.getElementById("mi-paste");
     const print = doc.getElementById("mi-print");
     const meta = doc.getElementById("mi-meta");
-    const embed = doc.getElementById("mi-embed");
+    const embed = doc.getElementById("mi-strip");
     const pub = doc.getElementById("mi-pubmenu");
     /* Paste sits directly under Open from url… with the first separator
        right beneath it (spec: below Open from url…, above the menu-sep). */
@@ -1446,37 +1446,40 @@ setTimeout(() => {
     const metaOk = print.nextElementSibling &&
       print.nextElementSibling.tagName === "HR" &&
       print.nextElementSibling.nextElementSibling === meta;
-    /* The embed toggle is the next group: separator → embed → pubmenu,
+    /* The strip toggle is the next group: separator → strip → pubmenu,
        a checkbox switch, default off, sharing the pub-switch visuals. */
     const sep = meta.nextElementSibling;
     const embedOk = sep && sep.tagName === "HR" && sep.nextElementSibling === embed &&
       embed.nextElementSibling === pub &&
       embed.getAttribute("aria-checked") === "false" &&
-      /Embed remote media/.test(embed.textContent) &&
+      /Strip remote media/.test(embed.textContent) &&
       !!embed.querySelector(".pub-switch .pub-knob") &&
       !!embed.querySelector(".mi-label");
-    const css = /#mi-embed \.mi-label,\s*#mi-pubmenu \.mi-label\s*{/.test(html);
+    const css = /#mi-strip \.mi-label,\s*#mi-pubmenu \.mi-label\s*{/.test(html);
     return pasteOk && metaOk && embedOk && css
       ? ok() : bad("paste=" + pasteOk + " meta=" + metaOk +
                    " embed=" + embedOk + " css=" + css);
   });
-  check("M02", "embed toggle: flips, persists, toasts, syncs the switch", () => {
+  check("M02", "strip toggle: flips, persists, toasts, syncs the switch", () => {
     W.openMarkdown("# M02\n\ntext");
-    const item = doc.getElementById("mi-embed");
+    const item = doc.getElementById("mi-strip");
     item.click();
     const on = item.getAttribute("aria-checked") === "true" &&
-      W.media.enabled() === true &&
-      window.localStorage.getItem("mdwb:embedMedia") === "true";
+      W.media.stripEnabled() === true &&
+      window.localStorage.getItem("mdwb:stripMedia") === "true";
     const t1 = toastText();
     item.click();
     const off = item.getAttribute("aria-checked") === "false" &&
-      W.media.enabled() === false &&
-      window.localStorage.getItem("mdwb:embedMedia") === "false";
-    return on && off && /remote media/i.test(t1)
-      ? ok(t1) : bad("on=" + on + " off=" + off + " toast=" + t1);
+      W.media.stripEnabled() === false &&
+      window.localStorage.getItem("mdwb:stripMedia") === "false";
+    /* The retired embedding switch never comes back. */
+    const legacyGone = window.localStorage.getItem("mdwb:embedMedia") === null;
+    return on && off && legacyGone && /remote media/i.test(t1)
+      ? ok(t1) : bad("on=" + on + " off=" + off + " legacy=" + legacyGone +
+                     " toast=" + t1);
   });
   check("M03", "strip pass: media gone, text/links/code untouched", () => {
-    W.media.setEnabled(false);
+    W.media.setStrip(false);
     const src = [
       "# Doc", "",
       "Hello ![one](https://x/1.png) world", "",
@@ -1506,104 +1509,95 @@ setTimeout(() => {
     return gone && kept
       ? ok() : bad("gone=" + gone + " kept=" + kept + " out=" + out.slice(0, 400));
   });
-  check("M09", "sanitiser: data:image survives, other data: schemes stay blocked", () => {
+  check("M09", "sanitiser: the app allow-list admits no data: uri any more", () => {
     const o = R(
       '![px](data:image/png;base64,iVBORw0KGgoAAAANSUhEUg) and [x](data:text/html,evil)',
     );
     const d = parse(o);
     const img = d.querySelector("img");
     const a = d.querySelector("a");
-    const imgOk = img &&
+    /* 1.8.6 revert: the SAFE_URI data:image branch existed only for the
+       embed engine and is gone — data: LINKS stay blocked. A data:image
+       png still renders through DOMPurify's stock DATA_URI_TAGS default
+       (vendor policy, identical to pre-1.8.1; no app code special-cases
+       it any more). */
+    const imgStock = img &&
       (img.getAttribute("src") || "").indexOf("data:image/png;base64,") === 0;
     const linkSafe = a && !a.getAttribute("href");
-    return imgOk && linkSafe
-      ? ok() : bad("img=" + imgOk + " href=" + (a ? a.getAttribute("href") : "none"));
+    return imgStock && linkSafe
+      ? ok("data: link blocked; data:image renders via vendor default only")
+      : bad("img=" + imgStock + " href=" + (a ? a.getAttribute("href") : "none"));
   });
-  checkA("M04", "embed pass: rendered images become data uris; failures keep urls", async (Wl) => {
-    /* 1.8.5: the automatic path — openMarkdown renders, the pass walks
-       the compiled DOM, captures each remote img through the (faked)
-       canvas and rewrites DOM, source and storage; the url the fake
-       env rejects keeps its remote form everywhere. */
-    Wl.media.setEnabled(true);
-    const restore = Wl.media.env(fakeEnv(/^https:\/\/img\/fail\.png$/));
-    try {
-      const src = [
-        "# M", "",
-        "![a](https://img/one.png)", "",
-        "![b][p2]", "",
-        "[p2]: https://img/two.png \"T\"", "",
-        "<img src=\"https://img/three.png\" alt=\"c\">", "",
-        "![bad](https://img/fail.png)", "",
-      ].join("\n");
-      Wl.openMarkdown(src);
-      await drain(30);
-      const content = doc.getElementById("content");
-      const srcs = Array.from(content.querySelectorAll("img"))
-        .map((i) => i.getAttribute("src"));
-      const captured = srcs.filter((s) =>
-        s.indexOf("data:image/png;base64,FAKE=") === 0).length;
-      const kept = srcs.some((s) => s === "https://img/fail.png");
-      const rec = JSON.parse(
-        window.localStorage.getItem("mdwb:current") || "null");
-      const sourceOk = !!rec && rec.source
-        .indexOf("![a](data:image/png;base64,FAKE=") !== -1 &&
-        rec.source.indexOf("[p2]: data:image/png;base64,FAKE=") !== -1 &&
-        rec.source.indexOf("\"T\"") !== -1 &&
-        rec.source.indexOf("src=\"data:image/png;base64,FAKE=") !== -1 &&
-        rec.source.indexOf("![bad](https://img/fail.png)") !== -1;
-      return captured === 3 && kept && sourceOk
-        ? ok("3 captured, 1 kept; source + storage rewritten")
-        : bad("captured=" + captured + " kept=" + kept +
-              " srcs=" + JSON.stringify(srcs));
-    } finally {
-      Wl.media.setEnabled(false);
-      restore();
-    }
+  checkA("M04", "strip pipeline: default passthrough, switch on strips, never rejects", async (Wl) => {
+    const src = [
+      "# M", "",
+      "Hello ![one](https://img/one.png) world", "",
+      "<video controls><source src=\"https://img/v.mp4\"></video>", "",
+    ].join("\n");
+    /* Default (off): the exact source passes through untouched — no
+       fetching, no conversion, no rewrite of any kind. */
+    const passthrough = await Wl.media.prepare(src);
+    const off = passthrough === src && Wl.media.stripEnabled() === false &&
+      window.localStorage.getItem("mdwb:stripMedia") !== "true";
+    /* On: media constructs are stripped before render/store, text wins. */
+    Wl.media.setStrip(true);
+    const stripped = await Wl.media.prepare(src);
+    const on = Wl.media.stripEnabled() === true &&
+      stripped.indexOf("img/one.png") === -1 &&
+      stripped.indexOf("img/v.mp4") === -1 &&
+      stripped.indexOf("Hello") !== -1 &&
+      stripped.indexOf("world") !== -1;
+    Wl.media.setStrip(false);
+    /* Defensive floor: garbage input still resolves (never rejects). */
+    const junk = await Wl.media.prepare(null);
+    return off && on && junk === ""
+      ? ok("off = byte-identical passthrough; on = media stripped pre-render")
+      : bad("off=" + off + " on=" + on + " junk=" + JSON.stringify(junk));
   });
-  checkA("M05", "clipboard paste: text renders, media pass runs, success toast", async (Wl) => {
+  checkA("M05", "clipboard paste: readText renders, passthrough keeps remote media", async (Wl) => {
     Wl.openMarkdown("# Seed\n\nbefore paste");
     window.navigator.clipboard = {
-      read: () => Promise.resolve([
-        {
-          types: ["text/plain"],
-          getType: () => Promise.resolve(new window.Blob(
-            ["# Pasted Doc\n\nHello ![x](https://img/gone.png)"],
-            { type: "text/plain" })),
-        },
-      ]),
+      readText: () => Promise.resolve(
+        "# Pasted Doc\n\nHello ![x](https://img/kept.png)"),
     };
     Wl.clipboard.paste();
     await drain();
     const txt = doc.getElementById("content").textContent;
+    const img = doc.querySelector("#content img");
     const rendered = txt.indexOf("Pasted Doc") !== -1;
-    const stripped = txt.indexOf("gone.png") === -1 &&
-      !doc.querySelector("#content img");
+    /* Strip remote media is off by default: the remote url passes
+       through untouched — no fetching, no conversion. */
+    const kept = !!img &&
+      img.getAttribute("src") === "https://img/kept.png";
     const toasted = toastText().indexOf("Pasted Doc") !== -1;
-    return rendered && stripped && toasted
+    return rendered && kept && toasted
       ? ok(toastText())
-      : bad("render=" + rendered + " strip=" + stripped + " toast=" + toastText());
+      : bad("render=" + rendered + " kept=" + kept + " toast=" + toastText());
   });
   checkA("M06", "clipboard guards: non-text, empty and denied all toast errors", async (Wl) => {
     Wl.openMarkdown("# Seed\n\nstable");
     const before = doc.getElementById("content").textContent;
+    /* A clipboard with no text representation: readText answers
+       NotFoundError (Chromium: "No valid data on clipboard"). */
+    const notTextErr = new Error("no valid data");
+    notTextErr.name = "NotFoundError";
     window.navigator.clipboard = {
-      read: () => Promise.resolve([{ types: ["image/png"] }]),
+      readText: () => Promise.reject(notTextErr),
     };
     Wl.clipboard.paste();
     await drain();
     const nonText = toastText();
     window.navigator.clipboard = {
-      read: () => Promise.resolve([{
-        types: ["text/plain"],
-        getType: () => Promise.resolve(new window.Blob(["   "], { type: "text/plain" })),
-      }]),
+      readText: () => Promise.resolve("   "),
     };
     Wl.clipboard.paste();
     await drain();
     const empty = toastText();
     const deniedErr = new Error("denied");
     deniedErr.name = "NotAllowedError";
-    window.navigator.clipboard = { read: () => Promise.reject(deniedErr) };
+    window.navigator.clipboard = {
+      readText: () => Promise.reject(deniedErr),
+    };
     Wl.clipboard.paste();
     await drain();
     const denied = toastText();
@@ -1615,26 +1609,39 @@ setTimeout(() => {
       : bad("nontext=" + nonText + " empty=" + empty + " denied=" + denied +
             " untouched=" + untouched);
   });
-  checkA("M08", "url import runs the media pass: stripped by default", async (Wl) => {
+  checkA("M08", "url import honors the switch: passthrough default, stripped when on", async (Wl) => {
     Wl.openMarkdown("# Seed\n\nx");
     window.fetch = () => Promise.resolve(
-      UrlStubs.md("# Remote\n\n![pic](https://img/stripped.png)\n"),
+      UrlStubs.md("# Remote\n\n![pic](https://img/remote.png)\n"),
     );
     Wl.openUrlDialog.submit("https://example.com/media.md");
     await drain();
-    const st = Wl.openUrlDialog.state();
-    const txt = doc.getElementById("content").textContent;
-    const noImg = !doc.querySelector("#content img");
-    return !st.open && !st.busy && txt.indexOf("Remote") !== -1 && noImg
-      ? ok() : bad("open=" + st.open + " busy=" + st.busy +
-                   " img=" + !noImg + " txt=" + txt.slice(0, 60));
+    let st = Wl.openUrlDialog.state();
+    const kept = !st.open && !st.busy &&
+      doc.getElementById("content").textContent.indexOf("Remote") !== -1 &&
+      !!doc.querySelector('#content img[src="https://img/remote.png"]');
+    /* The same import with the switch on: the image node is gone. */
+    Wl.media.setStrip(true);
+    window.fetch = () => Promise.resolve(
+      UrlStubs.md("# Remote 2\n\n![pic](https://img/gone.png)\n"),
+    );
+    Wl.openUrlDialog.submit("https://example.com/media2.md");
+    await drain();
+    st = Wl.openUrlDialog.state();
+    Wl.media.setStrip(false);
+    const stripped = !st.open && !st.busy &&
+      doc.getElementById("content").textContent.indexOf("Remote 2") !== -1 &&
+      !doc.querySelector("#content img");
+    return kept && stripped
+      ? ok("default keeps the https url; switch on strips before render")
+      : bad("kept=" + kept + " stripped=" + stripped);
   });
   check("M07", "publication: new authoring items excluded, seps prune cleanly", () => {
     W.openMarkdown("# M07\n\nbody");
     const out = W.publication.build();
     const d = parse(out);
     const gone = ["mi-open", "mi-open-url", "mi-paste", "mi-meta",
-      "mi-publish", "mi-embed", "mi-pubmenu"]
+      "mi-publish", "mi-strip", "mi-pubmenu"]
       .every((id) => !d.getElementById(id));
     const menu = d.getElementById("doc-menu");
     const kids = Array.prototype.map.call(menu.children, (el) => el);
@@ -1651,335 +1658,86 @@ setTimeout(() => {
             " kept=" + kept);
   });
 
-  /* ---------------- v1.8.5: native capture embed (no fetch) ----------------
-     jsdom decodes no images and implements no canvas, so every embed
-     check swaps the pass's environment adapters for deterministic
-     fakes: a loader that resolves "decoded" probes (or rejects for
-     urls matching the fail pattern) and a canvas whose toPng answers
-     a fixed data uri. The pipeline under test — DOM detection, probe
-     guards, pool, DOM swap, masked source rewrite, persistence — is
-     the production code. */
+  /* ------------- v1.8.6: strip toggle + dead-embed purge + gesture ----------
+     The embedding engine is gone, so its capture fakes are gone with it.
+     What remains to prove: no embedding machinery survives in the bundle,
+     every import route honors the switch, and the clipboard read fires
+     inside the direct user-gesture call stack. */
 
-  const fakeEnv = (fail) => ({
-    loadImage: (u) => (fail && fail.test(u))
-      ? Promise.reject(new Error("image load blocked"))
-      : Promise.resolve({ naturalWidth: 8, naturalHeight: 8 }),
-    makeCanvas: () => ({
-      drawImage() {},
-      toPng: () => "data:image/png;base64,FAKE=",
-    }),
+  check("N01", "purge: no embedding machinery survives in the bundle", () => {
+    const banned = [
+      "embedRendered", "captureOne", "collectDomImages", "mapPool",
+      "replaceUrlExact", "URL_BOUNDARY", "EMBED_MAX", "CAPTURE_TIMEOUT",
+      "makeCanvas", "toDataURL", "extMime", "resolveMime", "sniffImage",
+      "bytesToBase64", "Embed remote media", "Fetch & embed",
+      "data:image\\/", "data:image/png;base64,FAKE",
+    ];
+    const found = banned.filter((t) => html.indexOf(t) !== -1);
+    /* The single permitted mention of the old storage key is its deletion
+       (remove, don't hide) inside MediaTools.init. */
+    const embedKeyCount = html.split("embedMedia").length - 1;
+    return !found.length && embedKeyCount === 1
+      ? ok("banned tokens absent; only the legacy-key removal remains")
+      : bad("found=" + JSON.stringify(found) +
+            " embedKey=" + embedKeyCount);
   });
 
-  check("N01", "DOM detection: every rendered remote image is collected", () => {
-    const src = [
-      "# K", "",
-      "![plain](https://x/a.png)",
-      "![angle](<https://x/b.png>)",
-      "![paren](https://x/c(1).png)",
-      "![titled](https://x/e.png \"T\")",
-      "![mline](https://x/k.png",
-      "\"t\")",
-      "![ref][r1]", "",
-      "[r1]: https://x/d.svg", "",
-      "> ![quoted](https://x/f.png)", "",
-      "- ![listed](https://x/g.png)", "",
-      "| ![tabled](https://x/h.png) |", "",
-      "| --- |", "",
-      "<img src=\"https://x/i.png\" alt=\"raw\">", "",
-      "![dup](https://x/a.png)", "",
-      "`![code](https://x/skip1.png)`", "",
-      B, "![fenced](https://x/skip2.png)", B, "",
-      "    ![indented](https://x/skip3.png)", "",
-      "![data](data:image/png;base64,iVBOR)", "",
-      "![rel](/local.png)", "",
-      "[link only](https://x/j.png)", "",
-    ].join("\n");
-    W.openMarkdown(src);
-    const urls = W.media.collect(doc.getElementById("content"));
-    const want = ["https://x/a.png", "https://x/b.png", "https://x/c(1).png",
-      "https://x/d.svg", "https://x/e.png", "https://x/f.png",
-      "https://x/g.png", "https://x/h.png", "https://x/i.png",
-      "https://x/k.png"];
-    const missing = want.filter((u) => urls.indexOf(u) === -1);
-    const noJunk = urls.every((u) =>
-      u !== "https://x/skip1.png" && u !== "https://x/skip2.png" &&
-      u !== "https://x/skip3.png" && u !== "https://x/j.png" &&
-      u !== "/local.png" && u.indexOf("data:") !== 0);
-    const deduped = urls.filter((u) => u === "https://x/a.png").length === 1;
-    return !missing.length && noJunk && deduped
-      ? ok("collected " + urls.length +
-           " urls incl. paren/multi-line/reference/img-src nesting; code, data, relative and link-only excluded; duplicates once")
-      : bad("missing=" + JSON.stringify(missing) +
-            " urls=" + JSON.stringify(urls));
-  });
-
-  checkA("N02", "capture: DOM swap, badge links, code masking, summary", async (Wl) => {
-    Wl.media.setEnabled(true);
-    const restore = Wl.media.env(fakeEnv(/^https:\/\/img\/fail\.png$/));
-    try {
-      const src = [
-        "# S", "",
-        "![a](https://img/one.png)", "",
-        "[![badge](https://img/badge.png)](https://img/badge.png)", "",
-        "![bad](https://img/fail.png)", "",
-        B, "documented: ![doc](https://img/one.png)", B, "",
-        "![d](data:image/png;base64,iVBOR)", "",
-      ].join("\n");
-      Wl.openMarkdown(src);
-      await drain(30);
-      const content = doc.getElementById("content");
-      const srcs = Array.from(content.querySelectorAll("img"))
-        .map((i) => i.getAttribute("src"));
-      const badgeLink = content.querySelector("a[href^=\"data:image/png\"]");
-      const failKept = srcs.some((s) => s === "https://img/fail.png");
-      const dataUntouched = srcs.some((s) =>
-        s === "data:image/png;base64,iVBOR");
-      const rec = JSON.parse(
-        window.localStorage.getItem("mdwb:current") || "null");
-      const fenceAlive = !!rec && rec.source
-        .indexOf("![doc](https://img/one.png)") !== -1;
-      /* Direct path on a fresh host: the summary numbers, and the badge
-         markdown rewritten in source (image + link target). */
-      const host = doc.createElement("div");
-      host.innerHTML = Wl.render(src);
-      const sum = await Wl.media.embed(host, { source: src });
-      const sumSource = sum.source || "";
-      const domOk = srcs.filter((s) =>
-        s.indexOf("data:image/png;base64,FAKE=") === 0).length === 2 &&
-        !!badgeLink && failKept && dataUntouched;
-      const sumOk = sum.total === 3 && sum.captured === 2 && sum.kept === 1 &&
-        sumSource.indexOf("[![badge](data:image/png;base64,FAKE=") !== -1 &&
-        sumSource.indexOf(")](data:image/png;base64,FAKE=") !== -1 &&
-        sumSource.indexOf("![bad](https://img/fail.png)") !== -1 &&
-        fenceAlive;
-      return domOk && sumOk
-        ? ok("2 captured + badge link swapped; fail kept; fence untouched")
-        : bad("dom=" + JSON.stringify({ srcs, badge: !!badgeLink }) +
-              " sum=" + JSON.stringify(sum).slice(0, 200));
-    } finally {
-      Wl.media.setEnabled(false);
-      restore();
-    }
-  });
-
-  checkA("N03", "graceful degradation: failing captures never break the flow", async (Wl) => {
-    Wl.media.setEnabled(true);
-    const restore = Wl.media.env(fakeEnv(/./)); /* everything fails */
-    try {
-      const src = "# G\n\n![x](https://img/x.png) and <img src=\"https://img/y.png\">";
-      Wl.openMarkdown(src);
-      await drain(30);
-      const content = doc.getElementById("content");
-      const rendered = content.textContent.indexOf("G") !== -1;
-      const srcs = Array.from(content.querySelectorAll("img"))
-        .map((i) => i.getAttribute("src"));
-      const allRemote = srcs.every((s) => /^https?:\/\//.test(s));
-      const rec = JSON.parse(
-        window.localStorage.getItem("mdwb:current") || "null");
-      const sourceIntact = !!rec && rec.source === src;
-      const host = doc.createElement("div");
-      host.innerHTML = Wl.render(src);
-      const sum = await Wl.media.embed(host, { source: src });
-      return rendered && allRemote && sourceIntact &&
-        sum.total === 2 && sum.captured === 0 && sum.kept === 2
-        ? ok("urls kept, source byte-intact, render flow unaffected")
-        : bad("rendered=" + rendered + " allRemote=" + allRemote +
-              " intact=" + sourceIntact + " sum=" + JSON.stringify(sum));
-    } finally {
-      Wl.media.setEnabled(false);
-      restore();
-    }
-  });
-
-  /* ---------------- v1.8.5: capture guards (idempotence, caps) ------------- */
-
-  checkA("N11", "idempotence: a captured document re-imports as a no-op", async (Wl) => {
-    Wl.media.setEnabled(true);
-    const restore = Wl.media.env(fakeEnv(null));
-    try {
-      const src = "# I\n\n![p](https://img/idem.png)";
-      Wl.openMarkdown(src);
-      await drain(30);
-      const rec1 = JSON.parse(
-        window.localStorage.getItem("mdwb:current") || "null");
-      const embedded1 = !!rec1 &&
-        rec1.source.indexOf("![p](data:image/png;base64,FAKE=") !== -1;
-      /* Re-import the embedded form: nothing remote remains, so the pass
-         must not touch anything and the id must stay stable. */
-      Wl.openMarkdown(rec1.source);
-      await drain(30);
-      const remote = W.media.collect(doc.getElementById("content"));
-      const rec2 = JSON.parse(
-        window.localStorage.getItem("mdwb:current") || "null");
-      return embedded1 && remote.length === 0 &&
-        rec2 && rec2.source === rec1.source && rec2.id === rec1.id
-        ? ok("second import changed nothing (source + id byte-stable)")
-        : bad("embedded=" + embedded1 + " remote=" + JSON.stringify(remote) +
-              " stable=" + (!!rec2 && rec2.source === rec1.source));
-    } finally {
-      Wl.media.setEnabled(false);
-      restore();
-    }
-  });
-
-  checkA("N12", "caps: oversized pixels, dimensionless and oversized encodes keep their url", async (Wl) => {
-    Wl.media.setEnabled(true);
-    const restore = Wl.media.env({
-      loadImage: (u) => /zero/.test(u)
-        ? Promise.resolve({ naturalWidth: 0, naturalHeight: 0 })
-        : /big/.test(u)
-          ? Promise.resolve({ naturalWidth: 9, naturalHeight: 9 })
-          : /huge/.test(u)
-            ? Promise.resolve({ naturalWidth: 5000, naturalHeight: 5000 })
-            : Promise.resolve({ naturalWidth: 8, naturalHeight: 8 }),
-      /* Only the 9x9 "big" probe encodes over the budget; the 8x8 one
-         encodes normally, proving the encode cap is per-image. */
-      makeCanvas: (w) => ({
-        drawImage() {},
-        toPng: () => w === 9
-          ? "data:image/png;base64," + "A".repeat(26 * 1024 * 1024)
-          : "data:image/png;base64,FAKE=",
-      }),
-    });
-    const md = [
-      "![h](https://img/huge.png)",
-      "![z](https://img/zero.png)",
-      "![b](https://img/big.png)",
-      "![k](https://img/ok.png)",
-    ].join("\n");
-    const host = doc.createElement("div");
-    host.innerHTML = Wl.render(md);
-    const sum = await Wl.media.embed(host, { source: md });
-    Wl.media.setEnabled(false);
-    restore();
-    const okOnly = sum.captured === 1 && sum.kept === 3 &&
-      sum.source.indexOf("![k](data:image/png;base64,") !== -1 &&
-      sum.source.indexOf("![h](https://img/huge.png)") !== -1 &&
-      sum.source.indexOf("![z](https://img/zero.png)") !== -1 &&
-      sum.source.indexOf("![b](https://img/big.png)") !== -1;
-    return okOnly
-      ? ok("25MP pixel cap, 0px probe and 26MB encode all kept; ok.png captured")
-      : bad("sum=" + JSON.stringify({ c: sum.captured, k: sum.kept }) +
-            " src=" + (sum.source || "").slice(0, 160));
-  });
-
-  checkA("N13", "timeout: a probe that never settles is abandoned", async (Wl) => {
-    Wl.media.setEnabled(true);
-    const restoreEnv = Wl.media.env({
-      loadImage: () => new Promise(() => {}), /* never settles */
-      makeCanvas: () => ({
-        drawImage() {},
-        toPng: () => "data:image/png;base64,FAKE=",
-      }),
-    });
-    const restoreT = Wl.media.timeout(10);
-    const md = "![t](https://img/slow.png)";
-    const host = doc.createElement("div");
-    host.innerHTML = Wl.render(md);
-    const sum = await Wl.media.embed(host, { source: md });
-    restoreT();
-    restoreEnv();
-    Wl.media.setEnabled(false);
-    return sum.total === 1 && sum.captured === 0 && sum.kept === 1 &&
-      sum.source === md
-      ? ok("never-settling probe abandoned within the window; url kept")
-      : bad("sum=" + JSON.stringify(sum).slice(0, 160));
-  });
-
-  /* ---------------- v1.8.5: rewrite precision + repro cases ---------------- */
-
-  checkA("N14", "prefix-sharing urls each rewrite exactly", async (Wl) => {
-    Wl.media.setEnabled(true);
-    const restore = Wl.media.env(fakeEnv(null));
-    const md = "![a](https://x/p.png) then ![b](https://x/p.png?raw=1)";
-    const host = doc.createElement("div");
-    host.innerHTML = Wl.render(md);
-    const sum = await Wl.media.embed(host, { source: md });
-    const domSrcs = Array.from(host.querySelectorAll("img"))
-      .map((i) => i.getAttribute("src"));
-    Wl.media.setEnabled(false);
-    restore();
-    const aOk = sum.source.indexOf("![a](data:image/png;base64,FAKE=") === 0;
-    const bOk = sum.source.indexOf("![b](data:image/png;base64,FAKE=") !== -1;
-    const noMangle = sum.source.indexOf("?raw=1") === -1 &&
-      sum.source.indexOf("https://x/p.png") === -1;
-    const domOk = domSrcs.every((s) =>
-      s.indexOf("data:image/png;base64,FAKE=") === 0);
-    return aOk && bOk && noMangle && domOk && sum.captured === 2
-      ? ok("shared-prefix urls both captured, nothing mangled")
-      : bad("a=" + aOk + " b=" + bOk + " clean=" + noMangle +
-            " dom=" + JSON.stringify(domSrcs) + " sum=" + JSON.stringify(sum).slice(0, 120));
-  });
-
-  checkA("N15", "repro: wikimedia .PNG and usefresh .svg both embed natively", async (Wl) => {
-    Wl.media.setEnabled(true);
-    const restore = Wl.media.env(fakeEnv(null));
-    try {
-      const md = [
-        "`image 1` embeds successfully",
-        "![image 1](https://upload.wikimedia.org/wikipedia/commons/e/ef/X%5E4_-_4%5Ex.PNG)",
-        "",
-        "`image 2` does not embed; the link is untouched",
-        "![image 2](https://usefresh.dev/docs/architecture-flow-v2.svg)",
-      ].join("\n");
-      Wl.openMarkdown(md);
-      await drain(30);
-      const content = doc.getElementById("content");
-      const srcs = Array.from(content.querySelectorAll("img"))
-        .map((i) => i.getAttribute("src"));
-      const rec = JSON.parse(
-        window.localStorage.getItem("mdwb:current") || "null");
-      const bothData = srcs.length === 2 && srcs.every((s) =>
-        s.indexOf("data:image/png;base64,FAKE=") === 0);
-      const clean = !!rec && rec.source.indexOf("upload.wikimedia.org") === -1 &&
-        rec.source.indexOf("usefresh.dev") === -1;
-      const textAlive = !!rec &&
-        rec.source.indexOf("`image 1` embeds successfully") !== -1 &&
-        rec.source.indexOf("`image 2` does not embed") !== -1;
-      return bothData && clean && textAlive
-        ? ok("both repro images embedded via the browser's own load; no remote urls left")
-        : bad("srcs=" + JSON.stringify(srcs) + " clean=" + clean +
-              " text=" + textAlive);
-    } finally {
-      Wl.media.setEnabled(false);
-      restore();
-    }
-  });
-
-  checkA("N16", "no fetch: the capture pass performs zero programmatic requests", async (Wl) => {
-    const prevFetch = window.fetch;
-    let calls = 0;
-    window.fetch = function () {
-      calls += 1;
-      return prevFetch.apply(window, arguments);
+  checkA("N02", "dragged text rides the same switch (passthrough default, strips when on)", async (Wl) => {
+    Wl.openMarkdown("# Seed\\n\\nstable");
+    const drop = (md) => {
+      const ev = new window.Event("drop", { bubbles: true, cancelable: true });
+      Object.defineProperty(ev, "dataTransfer", {
+        value: { files: [], getData: () => md },
+      });
+      doc.dispatchEvent(ev);
     };
-    Wl.media.setEnabled(true);
-    const restore = Wl.media.env(fakeEnv(null));
-    try {
-      Wl.openMarkdown("# F\n\n![p](https://img/nf.png) and <img src=\"https://img/nf2.png\">");
-      await drain(30);
-      const srcs = Array.from(doc.getElementById("content").querySelectorAll("img"))
-        .map((i) => i.getAttribute("src"));
-      const embedded = srcs.length === 2 && srcs.every((s) =>
-        s.indexOf("data:image/png;base64,FAKE=") === 0);
-      return calls === 0 && embedded
-        ? ok("2 images embedded with window.fetch untouched (0 calls)")
-        : bad("fetchCalls=" + calls + " srcs=" + JSON.stringify(srcs));
-    } finally {
-      window.fetch = prevFetch;
-      Wl.media.setEnabled(false);
-      restore();
-    }
+    drop("# Dropped\\n\\n![pic](https://img/drop.png)");
+    await drain();
+    const kept = doc.getElementById("content").textContent
+      .indexOf("Dropped") !== -1 &&
+      !!doc.querySelector('#content img[src="https://img/drop.png"]');
+    Wl.media.setStrip(true);
+    drop("# Dropped 2\\n\\n![pic](https://img/gone.png)");
+    await drain();
+    Wl.media.setStrip(false);
+    const stripped = doc.getElementById("content").textContent
+      .indexOf("Dropped 2") !== -1 && !doc.querySelector("#content img");
+    return kept && stripped
+      ? ok("drop-text import honored the switch both ways")
+      : bad("kept=" + kept + " stripped=" + stripped);
+  });
+
+  checkA("N03", "readText is invoked synchronously inside the user gesture", async (Wl) => {
+    Wl.openMarkdown("# Seed\\n\\nstable");
+    let calls = 0;
+    window.navigator.clipboard = {
+      readText: () => {
+        calls += 1;
+        return Promise.resolve("# Gesture Doc\\n\\nbody");
+      },
+    };
+    /* dispatchEvent is synchronous: when pasteFromClipboard calls
+       readText() in the direct call stack of the click handler, the
+       counter has already moved by the time dispatch returns — the
+       property that keeps the browser's transient activation intact
+       and fires the native permission prompt on 'prompt' states. Any
+       await/async hop before the call would leave it at zero here. */
+    doc.getElementById("mi-paste").dispatchEvent(
+      new window.MouseEvent("click", { bubbles: true, cancelable: true }),
+    );
+    const syncCalls = calls;
+    await drain();
+    const rendered = doc.getElementById("content").textContent
+      .indexOf("Gesture Doc") !== -1;
+    return syncCalls === 1 && rendered
+      ? ok("readText fired inside the click's call stack, then the doc rendered")
+      : bad("syncCalls=" + syncCalls + " rendered=" + rendered);
   });
 
   checkA("N04", "keyboard shortcut pastes the clipboard with success toast", async (Wl) => {
     Wl.openMarkdown("# Seed\n\nbefore shortcut");
     window.navigator.clipboard = {
-      read: () => Promise.resolve([{
-        types: ["text/plain"],
-        getType: () => Promise.resolve(new window.Blob(
-          ["# Via Shortcut\n\nbody"], { type: "text/plain" })),
-      }]),
+      readText: () => Promise.resolve("# Via Shortcut\n\nbody"),
     };
     doc.body.focus();
     doc.dispatchEvent(new window.KeyboardEvent("keydown", {
@@ -1996,14 +1754,18 @@ setTimeout(() => {
   checkA("N05", "shortcut failure paths toast (denied, non-text)", async (Wl) => {
     const denied = new Error("no");
     denied.name = "NotAllowedError";
-    window.navigator.clipboard = { read: () => Promise.reject(denied) };
+    window.navigator.clipboard = {
+      readText: () => Promise.reject(denied),
+    };
     doc.dispatchEvent(new window.KeyboardEvent("keydown", {
       key: "V", ctrlKey: true, shiftKey: true, bubbles: true, cancelable: true,
     }));
     await drain();
     const deniedToast = toastText();
+    const notTextErr = new Error("no valid data");
+    notTextErr.name = "NotFoundError";
     window.navigator.clipboard = {
-      read: () => Promise.resolve([{ types: ["image/png"] }]),
+      readText: () => Promise.reject(notTextErr),
     };
     doc.dispatchEvent(new window.KeyboardEvent("keydown", {
       key: "V", metaKey: true, shiftKey: true, bubbles: true, cancelable: true,
@@ -2020,13 +1782,9 @@ setTimeout(() => {
     const before = doc.getElementById("content").textContent;
     let calls = 0;
     window.navigator.clipboard = {
-      read: () => {
+      readText: () => {
         calls++;
-        return Promise.resolve([{
-          types: ["text/plain"],
-          getType: () => Promise.resolve(new window.Blob(
-            ["# HIJACK"], { type: "text/plain" })),
-        }]);
+        return Promise.resolve("# HIJACK");
       },
     };
     /* Inside an editable control the browser's own paste stays native. */
@@ -2190,7 +1948,7 @@ setTimeout(() => {
       d2.getElementById("doc-menu").hidden === true;
     /* Always excluded: removed from the doc-menu in both variants. */
     const excludedGone = ["mi-open", "mi-open-url", "mi-paste", "mi-meta",
-      "mi-publish", "mi-embed", "mi-pubmenu"]
+      "mi-publish", "mi-strip", "mi-pubmenu"]
       .every((id) => !d1.getElementById(id) && !d2.getElementById(id));
     /* Everything else is 1:1: the export group stays intact. */
     const kept = ["mi-copy-md", "mi-copy-text", "mi-download", "mi-export",
@@ -2402,6 +2160,7 @@ setTimeout(() => {
   console.log("v1.8.3 additions: image format identification is extension-first (a recognised png/jpg/jpeg/gif/webp/svg/bmp/ico/avif ending names the canonical type outright — svg served as text/xml now embeds) with the content-type allowlist + magic-byte sniff kept as the fallback for unrecognised or missing extensions");
   console.log("v1.8.4 additions: the embed pass is AST-driven and conversion-integrated (image nodes collected from the parsed token tree — paren urls, multi-line titles, references, nesting, <img> — with boundary-checked exact rewrites), and the detection chain ends in the payload's magic bytes (extension, then Content-Type, then the bytes — a real image is never rejected for lacking an extension); repro-case suite covers the wikimedia .PNG + usefresh .svg pair");
     console.log("v1.8.5 additions: the embed transport is now the browser's own image load — images are detected on the compiled DOM and captured through a CORS-approved probe + offscreen canvas + toDataURL (no fetch() anywhere, no extension/header/magic-byte chain), then swapped into the live DOM and rewritten into the source (badge links included, code masked out) and re-persisted; per-image failures, oversize caps, dimensionless probes and never-settling loads keep the remote url and never break the import flow");
+  console.log("v1.8.6 additions: the Data URI embedding engine is retired — the media pipeline is a single 'Strip remote media' privacy switch (default off: untouched passthrough, on: the 1.8.1 stripping AST pass runs before render/store across file/url/clipboard/drag imports), the sanitiser blocks every data: uri again, the clipboard flow invokes navigator.clipboard.readText() inside the direct user-gesture call stack (native permission prompt on 'prompt' states; NotFoundError/denied/empty guard toasts), and the lightbox image gains object-fit: contain with an explicit safe area that reserves the floating close button's row");
   process.exit(fail + crash > 0 ? 1 : 0);
   }
 }, 150);

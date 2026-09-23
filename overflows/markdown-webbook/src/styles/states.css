@@ -224,9 +224,10 @@
                 color: #fff;
             }
 
-            /* --- Image lightbox (M5 Proposal A): the document's own image
-               at full size, over a calm dark scrim. Clicks, the close
-               button and Esc all dismiss; linked badge images never zoom. */
+            /* --- Image lightbox (M5 Proposal A; layout reworked 1.8.6):
+               the document's own image at full size, over a calm dark
+               scrim. Clicks, the close button and Esc all dismiss; linked
+               badge images never zoom. */
             .lightbox {
                 position: fixed;
                 inset: 0;
@@ -235,7 +236,19 @@
                 display: flex;
                 align-items: center;
                 justify-content: center;
-                padding: 5vmin;
+                /* Explicit viewport safe area (1.8.6): the image can never
+                   touch a viewport edge, and the top band also reserves the
+                   floating close button's row (its offset + control height
+                   + breathing room), so the close control never overlaps or
+                   obscures any part of the image. */
+                padding:
+                    calc(
+                        var(--space-5) + var(--control-size) +
+                        env(safe-area-inset-top)
+                    )
+                    calc(var(--space-5) + env(safe-area-inset-right))
+                    calc(var(--space-5) + env(safe-area-inset-bottom))
+                    calc(var(--space-5) + env(safe-area-inset-left));
                 border: none;
                 width: 100%;
                 animation: lightbox-in 0.16s ease;
@@ -248,9 +261,11 @@
             .lightbox-figure {
                 margin: 0;
                 max-width: 100%;
+                min-width: 0;
                 display: flex;
                 flex-direction: column;
                 align-items: center;
+                justify-content: center;
                 animation: lightbox-zoom 0.16s ease;
             }
             @keyframes lightbox-zoom {
@@ -259,16 +274,41 @@
                 }
             }
             .lightbox-figure img {
-                max-width: 92vw;
-                max-height: 84vh;
+                display: block;
+                /* Occupy the maximum available space across whichever
+                   dimension constrains (width or height) while the
+                   intrinsic aspect ratio stays strictly preserved:
+                   object-fit: contain keeps the painted image complete
+                   inside the flexible box — no crop, no stretch. */
+                max-width: calc(
+                    100vw -
+                        (
+                            var(--space-5) + env(safe-area-inset-left)
+                        ) -
+                        (
+                            var(--space-5) + env(safe-area-inset-right)
+                        )
+                );
+                max-height: calc(
+                    100vh -
+                        (
+                            var(--space-5) + var(--control-size) +
+                                env(safe-area-inset-top)
+                        ) -
+                        (var(--space-5) + env(safe-area-inset-bottom)) -
+                        /* caption reserve: margin-top + two caption lines */
+                        (var(--space-3) + 2.6em)
+                );
                 width: auto;
                 height: auto;
+                object-fit: contain;
                 border-radius: var(--radius-md);
                 box-shadow: var(--shadow-2);
                 /* Never inherit the dark theme's image dimming */
                 filter: none !important;
             }
             .lightbox-figure figcaption {
+                flex-shrink: 0;
                 margin-top: var(--space-3);
                 font-size: 0.85rem;
                 color: rgba(255, 255, 255, 0.72);

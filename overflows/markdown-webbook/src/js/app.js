@@ -19,7 +19,7 @@
 (function () {
     "use strict";
 
-    var APP_VERSION = "1.8.5";
+    var APP_VERSION = "1.8.6";
     var LS_PREFIX = "mdwb:";
     var MOBILE_QUERY = "(max-width: 720px)";
     var HEAVY_DOC_CHARS = 200 * 1024; /* show a loading state above this */
@@ -218,13 +218,14 @@
     /* Untrusted-input policy: allow-list schemes; DOMPurify handles tags. */
 
     var Sanitizer = {
-        /* Allow-list schemes. data:image/* joined in 1.8.1 so the "Embed
-           embed remote media" pass (which rewrites image urls to data
-           uris in the document source) survives sanitisation; every other
-           data: flavour — text/html, application/javascript, … — stays
-           blocked exactly as before. */
+        /* Allow-list schemes. The data:image branch joined in 1.8.1 for
+           the media embedding engine is gone since 1.8.6: the app's own
+           allow-list admits no data: uri of any flavour. (DOMPurify's
+           stock DATA_URI_TAGS default still permits data: payloads on
+           media elements' src — vendor policy, unchanged since before
+           1.8.1; data: LINKS stay blocked exactly as they always were.) */
         SAFE_URI:
-            /^(?:(?:https?|mailto):|data:image\/[a-z0-9.+-]+(?:;[a-z0-9.+=-]*)*,|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i,
+            /^(?:(?:https?|mailto):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i,
 
         /* Untrusted-input policy: allow-list schemes; DOMPurify handles tags.
            Strict mode never reaches this with an emptied allow-list — raw
@@ -1258,7 +1259,7 @@
 
          1. Doc-menu, always excluded (removed): "Open Markdown file…",
             "Open from url…", "Paste from clipboard", "Edit HTML metadata",
-            "Export publishable HTML", the "Embed remote media"
+            "Export publishable HTML", the "Strip remote media"
             switch and the "Include document menu in publication" switch.
          2. Shortcuts removed from the Help panel AND from the key
             listeners: Open a file (Ctrl+O), Paste from clipboard
@@ -1298,11 +1299,11 @@
            from the doc-menu, hidden from the Help map, listeners off).
            mi-open-url is ALWAYS excluded — a publication must not gain a
            network-fetching entry point. mi-paste is an import action and
-           mi-embed the import-media switch: both only make sense while
+           mi-strip the import-media switch: both only make sense while
            authoring, so neither travels (1.8.1). */
         EXCLUDED_MENU_IDS: [
             "mi-open", "mi-open-url", "mi-paste", "mi-meta", "mi-publish",
-            "mi-embed", "mi-pubmenu",
+            "mi-strip", "mi-pubmenu",
         ],
         EXCLUDED_HELP_ROWS: [
             "Open a file",
@@ -2843,135 +2844,78 @@
         },
     };
 
-    /* ================= Remote media pipeline (1.8.1) =======================
+    /* ================= Remote media pipeline (1.8.1, simplified 1.8.6) ====
        A load-time media pass for every document obtained from a local
-       file, a url or the clipboard, driven by the "Embed remote media"
-       doc-menu switch (default off):
+       file, a url, the clipboard or dragged text, driven by the
+       "Strip remote media" doc-menu switch (default off):
 
-         off — media constructs (markdown images incl. reference/shorthand
-               forms and linked badges, plus raw HTML img/video/audio/
-               picture/source/track) are stripped from the source, so the
-               document reads and exports as pure local text.
-         on  — every remote image the compiled document renders is
-               captured into a base64 data uri WITHOUT any programmatic
-               network request (1.8.5). The Markdown is parsed to its
-               AST and compiled to HTML exactly as usual; once the
-               markup is in the DOM the pass walks the rendered content,
-               finds every <img> the browser is already loading
-               natively, re-requests each url through a CORS-approved
-               probe image (the browser cache serves it), draws the
-               decoded pixels onto an offscreen canvas and encodes them
-               with toDataURL(). No fetch() is ever issued and no second
-               download is needed — the browser's own image load is the
-               transport, which is what lets embedding survive the
-               cross-origin rules that block programmatic byte access
-               from file:// and localhost alike. The data uri replaces
-               the remote url in the live DOM and in the document
-               source, so the embedding survives every export path and
-               a refresh.
+         off (default) — the source passes through COMPLETELY untouched:
+               remote media links render, read and export exactly as the
+               author wrote them. No network fetching, no Data URI
+               conversion, no rewriting of any kind happens.
+         on — the media-stripping AST pass (stripMedia) removes media
+               constructs from the source BEFORE it is rendered or
+               stored: markdown images (inline/angle-url/reference/
+               shorthand-resolved, linked badge pattern), raw HTML
+               video/audio/picture (paired + content) and img/source/
+               track. Links, text and code survive (maskCode masks
+               fences + inline code spans first, tidyBlank collapses
+               blank runs); shorthand images are removed only when a
+               definition resolves them (a literal ![word] text stays);
+               image-only reference defs are removed, defs shared with
+               link usage kept.
 
        Which urls count as media is decided by STRUCTURE (the construct
-       the url appears in), never by extension. Fenced code blocks and
-       inline code spans are masked out before the source rewrite, and
-       because detection runs over the COMPILED DOM, examples documented
-       inside code fences, spans or indented blocks never render as
-       images in the first place — protection is structural, not
-       pattern-matched.
+       the url appears in), never by extension. Because the pass runs
+       over the source with code masked out, examples documented inside
+       code fences, spans or indented blocks are structurally protected —
+       never pattern-matched.
 
-       CORS is the hard boundary of any client-side capture, and the
-       pass is honest about it: a server that ships no Access-Control-
-       Allow-Origin header lets the <img> display, but the canvas stays
-       tainted and the pixels are unreadable, so such an image keeps its
-       original remote url and still displays. A CORS-approved image
-       embeds outright whatever its url extension or Content-Type
-       claims — the browser itself decodes the bytes, so the old
-       extension/header/magic-byte identification chain (1.8.2–1.8.4)
-       is no longer needed. Failures are per-image and the pass never
-       rejects — a broken image must never break an import. */
+       The Data URI embedding engine that shared this module from 1.8.1
+       through 1.8.5 (fetch-based, then canvas-capture based) is gone:
+       its transport was bound by the browser's cross-origin rules — a
+       server without an Access-Control-Allow-Origin header blocked
+       programmatic byte access from file:// and localhost alike — and
+       the privacy story is clearer as a pure strip. Sanitisation
+       reverted with it: every data: uri is blocked again (see
+       Sanitizer.SAFE_URI), so no media payload can smuggle itself
+       through the url allow-list.
+
+       prepare() is the single entry point used by every import path.
+       Contract: ALWAYS resolves with a string, never rejects — a broken
+       document must never break an import. */
 
     const MediaTools = {
-        /* Refuse to inline absurd payloads: a capture whose data uri
-           would exceed this character budget keeps its url, mirroring
-           the byte cap the fetch-based pass used. */
-        EMBED_MAX_URI_CHARS: 25 * 1024 * 1024,
-
-        /* Canvas memory guard: an image beyond ~16.8M pixels (4K square)
-           is not captured — encoding anything larger risks multi-second
-           main-thread freezes and multi-megabyte strings. */
-        EMBED_MAX_PIXELS: 4096 * 4096,
-
-        /* A probe that neither loads nor errors inside this window is
-           abandoned (its url is kept); the pass must always settle. */
-        CAPTURE_TIMEOUT_MS: 15000,
-
-        enabled: false,
-
-        /* Environment adapters. The Image/Canvas primitives live behind
-           this object so the verification harness can substitute
-           deterministic fakes (jsdom decodes no images and implements
-           no canvas). Every adapter may throw; captureOne treats any
-           throw as a per-image failure and answers null. */
-        env: {
-            /* CORS-approved re-request of an already-rendered image url.
-               Resolves the probe element once decoded; rejects when the
-               load fails (network error, or the cross-origin rules the
-               probe opted into are not satisfied). */
-            loadImage(url) {
-                return new Promise((resolve, reject) => {
-                    const probe = new Image();
-                    probe.crossOrigin = "anonymous";
-                    probe.onload = () => resolve(probe);
-                    probe.onerror = () =>
-                        reject(new Error("image load blocked"));
-                    probe.src = url;
-                });
-            },
-
-            /* Offscreen 2d canvas: draw + encode. toPng throws a
-               SecurityError on a tainted canvas (the response carried no
-               usable Access-Control-Allow-Origin) — caught upstream. */
-            makeCanvas(width, height) {
-                const c = document.createElement("canvas");
-                c.width = width;
-                c.height = height;
-                const ctx = c.getContext("2d");
-                if (!ctx) throw new Error("canvas 2d unavailable");
-                return {
-                    drawImage: (img) => ctx.drawImage(img, 0, 0),
-                    toPng: () => c.toDataURL("image/png"),
-                };
-            },
-        },
+        stripEnabled: false,
 
         init: function () {
-            MediaTools.enabled = Storage.getJSON("embedMedia", false) === true;
+            MediaTools.stripEnabled =
+                Storage.getJSON("stripMedia", false) === true;
+            /* The embedding feature is gone; its persisted switch is
+               deleted, not kept hidden (remove, don't hide). */
+            try {
+                localStorage.removeItem(LS_PREFIX + "embedMedia");
+            } catch (e) {}
         },
 
         state: function () {
-            return { enabled: MediaTools.enabled };
+            return { strip: MediaTools.stripEnabled };
         },
 
-        setEnabled: function (on) {
-            MediaTools.enabled = !!on;
-            Storage.setJSON("embedMedia", MediaTools.enabled);
+        setStrip: function (on) {
+            MediaTools.stripEnabled = !!on;
+            Storage.setJSON("stripMedia", MediaTools.stripEnabled);
         },
 
-        /* The single entry point used by every import path. Contract:
-           ALWAYS resolves with a string, never rejects. With the switch
-           on the source passes through UNCHANGED — the embedding happens
-           after the compile, over the rendered DOM (afterRender /
-           embedRendered), so the document appears immediately and each
-           image upgrades in place as its capture settles. */
         prepare: function (md) {
             const text = String(md == null ? "" : md);
-            if (!MediaTools.enabled) {
-                try {
-                    return Promise.resolve(MediaTools.stripMedia(text));
-                } catch (e) {
-                    return Promise.resolve(text);
-                }
+            if (!MediaTools.stripEnabled) return Promise.resolve(text);
+            try {
+                return Promise.resolve(MediaTools.stripMedia(text));
+            } catch (e) {
+                /* Defensive floor: stripping must never break an import. */
+                return Promise.resolve(text);
             }
-            return Promise.resolve(text);
         },
 
         /* ---------- masking: keep code out of both passes ---------- */
@@ -3115,224 +3059,6 @@
             );
         },
 
-        /* ---------------------- embed pass (1.8.5) ---------------------- */
-
-        /* Replace every standalone occurrence of `url` with `uri` in the
-           masked source (1.8.4). The url comes from a rendered image, so
-           a boundary check keeps the rewrite precise: an occurrence
-           glued to further url characters — a longer sibling url that
-           merely shares this one as a prefix (…p.png vs …p.png?raw=1) —
-           is left untouched for its own replacement. Markdown delimiters
-           (parens, quotes, brackets) are NOT boundary characters — they
-           hug every inline destination — so the class covers only
-           characters that continue a url itself. Callers replace in
-           descending-url-length order, so the longer sibling is always
-           consumed first; data uris cannot contain a raw url substring
-           (base64 has no colon), so earlier replacements are never
-           re-matched. Occurrences inside link targets that reuse an
-           image's exact url are inlined too (rare, benign: the link
-           still resolves to the same embedded image). */
-        URL_BOUNDARY: /[A-Za-z0-9%._~:/?#&=+;,~-]/,
-
-        replaceUrlExact: function (text, url, uri) {
-            if (!url || !uri || url === uri) return text;
-            let out = "";
-            let at = 0;
-            for (;;) {
-                const i = text.indexOf(url, at);
-                if (i === -1) break;
-                const end = i + url.length;
-                const before = i > 0 ? text.charAt(i - 1) : "";
-                const after = end < text.length ? text.charAt(end) : "";
-                const glued =
-                    (!!before && MediaTools.URL_BOUNDARY.test(before)) ||
-                    (!!after && MediaTools.URL_BOUNDARY.test(after));
-                out += text.slice(at, glued ? end : i);
-                if (!glued) out += uri;
-                at = end;
-            }
-            return out + text.slice(at);
-        },
-
-        /* DOM detection (1.8.5): the remote urls the compiled document
-           actually renders, read from the src ATTRIBUTE — the exact form
-           the renderer wrote and the source rewrite must find (elm.src
-           would resolve relative urls against the page and never match).
-           Only http(s) urls enter the pass: data uris are already
-           embedded, blob/file/relative targets have no remote origin to
-           capture from. Images documented inside code fences, spans or
-           indented blocks never render, so code protection is
-           structural; the same url rendered twice is reported once. */
-        collectDomImages: function (container) {
-            const urls = [];
-            const seen = new Set();
-            if (!container) return urls;
-            for (const img of container.querySelectorAll("img")) {
-                const src = img.getAttribute("src") || "";
-                if (seen.has(src) || !/^https?:\/\//i.test(src)) continue;
-                seen.add(src);
-                urls.push(src);
-            }
-            return urls;
-        },
-
-        /* Capture one url: a CORS-approved probe load, a guard pass, an
-           offscreen draw and a PNG encode. EVERY failure mode — load
-           error (network, or the cross-origin rules the probe opted
-           into), timeout, zero dimensions, oversized pixels, tainted
-           canvas, oversized encode — resolves to null so the caller
-           keeps the original url. Never rejects. */
-        captureOne: function (url) {
-            let timer = null;
-            const load = Promise.race([
-                Promise.resolve().then(() => MediaTools.env.loadImage(url)),
-                new Promise((resolve, reject) => {
-                    timer = setTimeout(
-                        () => reject(new Error("image load timed out")),
-                        MediaTools.CAPTURE_TIMEOUT_MS,
-                    );
-                }),
-            ]).then(
-                (img) => {
-                    clearTimeout(timer);
-                    return img;
-                },
-                (err) => {
-                    clearTimeout(timer);
-                    throw err;
-                },
-            );
-            return load
-                .then((img) => {
-                    const w = img.naturalWidth || img.width || 0;
-                    const h = img.naturalHeight || img.height || 0;
-                    if (!w || !h) throw new Error("image has no pixels");
-                    if (w * h > MediaTools.EMBED_MAX_PIXELS)
-                        throw new Error("image too large to capture");
-                    const canvas = MediaTools.env.makeCanvas(w, h);
-                    canvas.drawImage(img);
-                    const uri = canvas.toPng();
-                    if (!/^data:image\//i.test(uri))
-                        throw new Error("capture did not encode an image");
-                    if (uri.length > MediaTools.EMBED_MAX_URI_CHARS)
-                        throw new Error("capture exceeds the embed budget");
-                    return uri;
-                })
-                .catch(() => null);
-        },
-
-        /* Embed every remote image of a rendered document (1.8.5).
-           Captures run through a small worker pool; the live DOM is
-           updated per image as its capture settles (the <img> src, plus
-           any <a href> that targets the same url — the badge pattern —
-           so linked images stay usable offline too); the source text is
-           rewritten once, after every capture has settled, with code
-           masked out for the duration. When the document is still the
-           current one the rewrite is re-persisted, so the embedded form
-           survives a refresh and every export path. Resolves with a
-           summary and NEVER rejects — one failing image must not break
-           the document flow. */
-        embedRendered: async function (container, doc) {
-            const summary = { total: 0, captured: 0, kept: 0, source: null };
-            try {
-                const urls = MediaTools.collectDomImages(container);
-                summary.total = urls.length;
-                if (!urls.length) return summary;
-
-                /* url -> [elements]: every <img> that renders the url and
-                   every <a> that targets it. */
-                const targets = new Map();
-                for (const el of container.querySelectorAll("img, a")) {
-                    const attr = el.tagName === "IMG" ? "src" : "href";
-                    const u = el.getAttribute(attr) || "";
-                    if (!/^https?:\/\//i.test(u)) continue;
-                    if (!targets.has(u)) targets.set(u, []);
-                    targets.get(u).push(el);
-                }
-
-                const captured = new Map(); /* url -> data uri */
-                await MediaTools.mapPool(
-                    urls,
-                    async (url) => {
-                        const uri = await MediaTools.captureOne(url);
-                        if (!uri) return null; /* kept — still displays */
-                        captured.set(url, uri);
-                        for (const el of targets.get(url) || [])
-                            el.setAttribute(
-                                el.tagName === "IMG" ? "src" : "href",
-                                uri,
-                            );
-                        return uri;
-                    },
-                    4,
-                );
-
-                summary.captured = captured.size;
-                summary.kept = summary.total - captured.size;
-                if (captured.size && doc && typeof doc.source === "string") {
-                    /* Longest urls first, so a longer sibling that shares
-                       a prefix with a shorter one is rewritten before the
-                       shorter could match inside it. */
-                    const ordered = [...captured.keys()].sort(
-                        (a, b) => b.length - a.length,
-                    );
-                    const masked = MediaTools.maskCode(doc.source);
-                    let out = masked.text;
-                    for (const u of ordered)
-                        out = MediaTools.replaceUrlExact(
-                            out, u, captured.get(u),
-                        );
-                    out = MediaTools.tidyBlank(
-                        MediaTools.unmaskCode(out, masked.stash),
-                    );
-                    if (out !== doc.source) {
-                        doc.source = out;
-                        doc.id = djb2(out);
-                        if (App.current === doc)
-                            doc.persisted = Source.saveDoc(doc);
-                    }
-                }
-                if (doc) summary.source = doc.source;
-                return summary;
-            } catch (e) {
-                /* Defensive floor: the rendered document is exactly as it
-                   was — remote urls intact, images still displaying. */
-                summary.captured = 0;
-                summary.kept = summary.total;
-                return summary;
-            }
-        },
-
-        /* Load-path hook (called at the end of App.doLoad): with the
-           switch on, embed the freshly rendered document. Fire-and-
-           forget — the reading state is never blocked and the promise is
-           guarded so nothing escapes into the console. */
-        afterRender: function (doc) {
-            if (!MediaTools.enabled || !doc || doc.origin === "embedded")
-                return;
-            if (typeof window !== "undefined" && window.MDWB_PUB) return;
-            Promise.resolve()
-                .then(() => MediaTools.embedRendered(App.dom.content, doc))
-                .catch(() => {});
-        },
-
-        /* Small worker pool so a document with many images neither
-           floods the network stack nor serialises painfully. */
-        mapPool: async function (items, worker, limit) {
-            const results = new Array(items.length);
-            let i = 0;
-            const next = async () => {
-                if (i >= items.length) return;
-                const idx = i++;
-                results[idx] = await worker(items[idx], idx);
-                await next();
-            };
-            const starters = [];
-            const width = Math.max(1, Math.min(limit || 4, items.length));
-            for (let s = 0; s < width; s++) starters.push(next());
-            await Promise.all(starters);
-            return results;
-        },
     };
 
     /* =============================== UI (R5, R7) =========================== */
@@ -3423,7 +3149,7 @@
                 Settings.applyAll();
                 Settings.watchSystem();
                 App.syncSettingsUi();
-                App.syncEmbedUi();
+                App.syncStripUi();
                 Find.init();
                 Palette.init();
                 Help.init();
@@ -3587,14 +3313,9 @@
                 else if (origin === "imported" || origin === "pasted")
                     UI.toast('Opened "' + Meta.effectiveMeta().title + '"');
                 /* origin "url" stays silent by design: the dialog closing is
-                   the success signal (1.8.0). */
-
-                /* Native media capture (1.8.5): with the embed switch on,
-                   the freshly rendered document is embedded in place —
-                   each remote <img> the browser loaded natively is
-                   re-encoded as a data uri in the DOM and in the source.
-                   Fire-and-forget; never blocks the reading state. */
-                MediaTools.afterRender(doc);
+                   the success signal (1.8.0). The media pass (1.8.6) ran
+                   BEFORE the render — with Strip remote media on, the
+                   stored document is already the stripped source. */
             } catch (err) {
                 UI.hideLoading();
                 App.showFatal(err);
@@ -3751,72 +3472,59 @@
             );
         },
 
-        /* "Embed remote media" (1.8.1): a global import behaviour,
-           persisted app-wide (not per document) and applied the next time
-           content arrives from a file, a url or the clipboard. */
-        syncEmbedUi: function () {
-            var item = $("mi-embed");
+        /* "Strip remote media" (1.8.1, reshaped 1.8.6): a global import
+           behaviour, persisted app-wide (not per document) and applied the
+           next time content arrives from a file, a url, the clipboard or
+           dragged text. Off (default) keeps remote media untouched; on,
+           the stripping pass runs before render and store. */
+        syncStripUi: function () {
+            var item = $("mi-strip");
             if (item)
                 item.setAttribute(
                     "aria-checked",
-                    MediaTools.enabled ? "true" : "false",
+                    MediaTools.stripEnabled ? "true" : "false",
                 );
         },
 
-        toggleEmbedMedia: function () {
-            MediaTools.setEnabled(!MediaTools.enabled);
-            App.syncEmbedUi();
+        toggleStripMedia: function () {
+            MediaTools.setStrip(!MediaTools.stripEnabled);
+            App.syncStripUi();
             UI.toast(
-                MediaTools.enabled
-                    ? "Remote media will be embedded when importing"
-                    : "Remote media will be removed when importing",
+                MediaTools.stripEnabled
+                    ? "Remote media will be stripped when importing"
+                    : "Remote media will be kept when importing",
             );
         },
 
-        /* ------------------ paste from clipboard (1.8.1) ------------------- */
+        /* ------------------ paste from clipboard (1.8.6) -------------------*/
 
-        /* Best-practice read: prefer the async clipboard items API so the
-           payload's types can be inspected (a copied image, file or
-           spreadsheet is NOT text and must say so); fall back to
-           readText() where the items API is missing. Never throws. */
+        /* One API, one gesture: navigator.clipboard.readText() is invoked
+           SYNCHRONOUSLY inside this handler — the direct user-gesture call
+           stack the Async Clipboard API requires — so the browser's
+           transient activation is intact and the native permission prompt
+           appears whenever the origin's clipboard-read state is 'prompt'.
+           Everything after the call only handles its outcome: a resolved
+           payload flows through the media pipeline per the Strip remote
+           media state; a rejected one is classified (denied, non-text,
+            empty) and announced with a non-intrusive error toast. Never
+           throws. */
         pasteFromClipboard: function () {
             var fail = function (msg) {
                 UI.toast(msg, true);
             };
             var board = navigator.clipboard || null;
-            if (
-                !board ||
-                (typeof board.read !== "function" &&
-                    typeof board.readText !== "function")
-            ) {
+            if (!board || typeof board.readText !== "function") {
                 fail("Pasting isn't available in this browser");
                 return;
             }
             var reading;
-            if (typeof board.read === "function") {
-                reading = Promise.resolve(board.read()).then(function (
-                    items,
-                ) {
-                    var list = items || [];
-                    for (var i = 0; i < list.length; i++) {
-                        var types =
-                            list[i] && list[i].types ? list[i].types : [];
-                        if (types.indexOf("text/plain") !== -1) {
-                            return Promise.resolve(
-                                list[i].getType("text/plain"),
-                            ).then(function (blob) {
-                                return blob && blob.text
-                                    ? blob.text()
-                                    : String(blob);
-                            });
-                        }
-                    }
-                    var err = new Error("clipboard has no text/plain item");
-                    err.notText = true;
-                    throw err;
-                });
-            } else {
+            try {
+                /* Still inside the gesture's call stack — the read request
+                   reaches the browser before any await can break it. */
                 reading = Promise.resolve(board.readText());
+            } catch (e) {
+                fail("Couldn't read the clipboard — copy the text and try again");
+                return;
             }
             reading.then(
                 function (text) {
@@ -3828,15 +3536,18 @@
                     App.importPasted(text);
                 },
                 function (err) {
-                    if (err && err.notText) {
+                    var name = err && err.name ? String(err.name) : "";
+                    if (name === "NotFoundError" || name === "DataError") {
+                        /* Chromium answers a clipboard that holds no text
+                           representation with NotFoundError. */
                         fail(
                             "The clipboard doesn't hold any text — copy the Markdown source and try again",
                         );
                     } else if (
-                        err &&
-                        (err.name === "NotAllowedError" ||
-                            err.name === "SecurityError")
+                        name === "NotAllowedError" ||
+                        name === "SecurityError"
                     ) {
+                        /* Permission denied, or the prompt was dismissed. */
                         fail(
                             "Clipboard access was denied — allow it and try again",
                         );
@@ -3940,7 +3651,7 @@
             else {
                 App.syncToolbar();
                 App.syncPubMenuUi();
-                App.syncEmbedUi();
+                App.syncStripUi();
                 App.openPopover(App.dom.docMenu, App.dom.btnDocs);
             }
         },
@@ -4082,8 +3793,8 @@
             bindMenuItem("mi-pubmenu", function () {
                 App.togglePubMenu();
             });
-            bindMenuItem("mi-embed", function () {
-                App.toggleEmbedMedia();
+            bindMenuItem("mi-strip", function () {
+                App.toggleStripMedia();
             });
 
             /* Compact more-menu (search + customisation collapse here) and
@@ -4789,53 +4500,20 @@
             return Exporter.downloadLabel();
         },
         media: {
-            /* Harness/console hook: the load-time media pipeline (1.8.1). */
+            /* Harness/console hook: the load-time media pipeline (1.8.6). */
             prepare: function (md) {
                 return MediaTools.prepare(md);
             },
             strip: function (md) {
                 return MediaTools.stripMedia(md);
             },
-            /* Harness hook (1.8.5): run the embed pass over an already
-               rendered container + document-like { source }; resolves
-               the summary { total, captured, kept, source }. */
-            embed: function (container, doc) {
-                return MediaTools.embedRendered(container, doc);
+            stripEnabled: function () {
+                return MediaTools.stripEnabled;
             },
-            /* Harness hook (1.8.5): the remote urls the compiled DOM
-               carries — the detection stage of the embed pass. */
-            collect: function (container) {
-                try {
-                    return MediaTools.collectDomImages(container);
-                } catch (e) {
-                    return [];
-                }
-            },
-            /* Harness hook (1.8.5): swap the environment adapters for
-               fakes; returns a restore function. */
-            env: function (patch) {
-                const prev = MediaTools.env;
-                MediaTools.env = Object.assign({}, prev, patch || {});
-                return () => {
-                    MediaTools.env = prev;
-                };
-            },
-            /* Harness hook (1.8.5): shrink the probe-abandonment window
-               so the timeout path is testable; returns a restore. */
-            timeout: function (ms) {
-                const prev = MediaTools.CAPTURE_TIMEOUT_MS;
-                MediaTools.CAPTURE_TIMEOUT_MS = ms;
-                return () => {
-                    MediaTools.CAPTURE_TIMEOUT_MS = prev;
-                };
-            },
-            enabled: function () {
-                return MediaTools.enabled;
-            },
-            setEnabled: function (v) {
-                MediaTools.setEnabled(!!v);
-                App.syncEmbedUi();
-                return MediaTools.enabled;
+            setStrip: function (v) {
+                MediaTools.setStrip(!!v);
+                App.syncStripUi();
+                return MediaTools.stripEnabled;
             },
             state: function () {
                 return MediaTools.state();
@@ -4849,9 +4527,7 @@
                 var board = navigator.clipboard || null;
                 return {
                     supported: !!(
-                        board &&
-                        (typeof board.read === "function" ||
-                            typeof board.readText === "function")
+                        board && typeof board.readText === "function"
                     ),
                 };
             },
