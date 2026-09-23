@@ -9,7 +9,7 @@
         <meta name="color-scheme" content="light dark" />
         <meta
             name="description"
-            content="A portable, self-contained Markdown reading environment. Open a .md file, drag and drop, or paste — no server, no account, no network."
+            content="A portable, self-contained Markdown reading environment. Open a .md file, drag and drop, or fetch one from a url — no server, no account."
         />
         <title>Markdown Webbook</title>
         <link
@@ -144,9 +144,10 @@
                 --shadow-1: 0 4px 12px rgba(0, 0, 0, 0.15);
                 --shadow-2: 0 8px 28px rgba(0, 0, 0, 0.22);
 
-                /* Z-index scale: scrim < drawer < header < progress < popover
-                   < toast < drop */
+                /* Z-index scale: scrim < btn-top < drawer < header < progress
+                   < popover < toast < drop */
                 --z-scrim: 800;
+                --z-btn-top: 850;
                 --z-drawer: 900;
                 --z-header: 1000;
                 --z-search: 1400;
@@ -484,7 +485,9 @@
                 align-items: center;
                 justify-content: center;
                 box-shadow: var(--shadow-1);
-                z-index: var(--z-popover);
+                /* Below the TOC drawer (--z-drawer) so the open contents
+                   panel always covers the floating button (1.8.0). */
+                z-index: var(--z-btn-top);
                 transition:
                     opacity 0.2s ease,
                     transform 0.2s ease;
@@ -1786,6 +1789,53 @@
                 background: var(--text-color);
                 opacity: 0.9;
             }
+            .mbtn:disabled {
+                cursor: default;
+            }
+
+            /* --- Open-from-url dialog (1.8.0) ---------------------------------
+               The meta-panel shell hosting one label-less url field: single
+               line, left-aligned text, same 38px row voice. The Open button
+               owns the async loading state — the label swaps to a spinner,
+               the control goes inert, and failures re-enable the form with
+               an error toast while successes close the dialog silently. */
+            #openurl-form {
+                padding: 0px var(--space-5) var(--space-5);
+            }
+            .openurl-row input {
+                /* .meta-row input right-aligns values; a url field reads
+                   left-to-right (declared after it, same specificity). */
+                text-align: left;
+            }
+            #openurl-open {
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+            }
+            .mbtn .mbtn-spinner {
+                display: none;
+                width: 16px;
+                height: 16px;
+                flex: 0 0 auto;
+                border: 2px solid currentColor;
+                border-right-color: transparent;
+                border-radius: 50%;
+                animation: mbtn-spin 0.7s linear infinite;
+            }
+            .mbtn.is-loading {
+                pointer-events: none;
+            }
+            .mbtn.is-loading .mbtn-label {
+                display: none;
+            }
+            .mbtn.is-loading .mbtn-spinner {
+                display: inline-block;
+            }
+            @keyframes mbtn-spin {
+                to {
+                    transform: rotate(360deg);
+                }
+            }
             @media (max-width: 480px) {
                 .meta-row label {
                     min-width: 74px;
@@ -2417,7 +2467,7 @@
                 <input
                     type="file"
                     id="file-input"
-                    accept=".md,.markdown,.mdown,.txt,text/markdown,text/plain"
+                    accept=".md,.markdown,.mdown,.mdx,.txt,text/markdown,text/plain"
                     hidden
                 />
                 <span id="header-title" class="doc-title">Markdown Webbook</span>
@@ -2609,6 +2659,10 @@
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
                 Open Markdown file…
             </button>
+            <button class="menu-item" id="mi-open-url" role="menuitem" type="button">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
+                Open from url…
+            </button>
             <button class="menu-item" id="mi-meta" role="menuitem" type="button">
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="8" y1="13" x2="16" y2="13"></line><line x1="8" y1="17" x2="13" y2="17"></line></svg>
                 Edit HTML metadata
@@ -2749,7 +2803,7 @@
                 <h1 class="empty-title">A quiet place to read Markdown</h1>
                 <p class="empty-sub">
                     Open a file, drag &amp; drop it anywhere on this page, or
-                    paste Markdown to begin.
+                    fetch one from a url to begin.
                 </p>
                 <button id="btn-open-empty" type="button" class="btn-primary">
                     Open a Markdown file
@@ -2829,6 +2883,37 @@
             </div>
         </div>
 
+        <div id="openurl-backdrop" class="help-backdrop" hidden>
+            <div id="openurl-panel" class="help-panel meta-panel" role="dialog" aria-modal="true" aria-labelledby="openurl-heading">
+                <div class="meta-pin">
+                    <div class="meta-head">
+                        <h2 id="openurl-heading">Open from url</h2>
+                        <button id="openurl-close" class="modal-x" aria-label="Close url opener" title="Close (Esc)">
+                            <svg viewBox="0 0 24 24" aria-hidden="true">
+                                <line x1="18" y1="6" x2="6" y2="18"></line>
+                                <line x1="6" y1="6" x2="18" y2="18"></line>
+                            </svg>
+                        </button>
+                    </div>
+                    <p class="meta-sub">Fetch a Markdown file straight from the web and read it here. Supported formats: <code>.md</code>, <code>.markdown</code> and <code>.mdx</code>.</p>
+                </div>
+                <form id="openurl-form" novalidate>
+                    <div class="meta-card">
+                        <div class="meta-row openurl-row">
+                            <input id="mfu-url" name="url" type="url" inputmode="url" enterkeyhint="go" placeholder="https://example.com/book.md" autocomplete="off" spellcheck="false" aria-label="Markdown file url" />
+                        </div>
+                    </div>
+                    <div class="meta-foot">
+                        <button type="button" class="mbtn" id="openurl-cancel">Cancel</button>
+                        <button type="submit" class="mbtn primary" id="openurl-open">
+                            <span class="mbtn-label">Open</span>
+                            <span class="mbtn-spinner" aria-hidden="true"></span>
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
         <div id="drop-overlay" class="drop-overlay" hidden>
             <div class="drop-card">Drop your Markdown file to open it</div>
         </div>
@@ -2850,17 +2935,21 @@ lang: en
 # Welcome to the Markdown Webbook
 
 This file is a **portable, self-contained Markdown reader**. It is one HTML
-file with no server, no account, no build step and no network calls. This
+file with no server, no account and no build step — it only ever reaches
+out to the network when you ask it to (Open from url…). This
 embedded sample book doubles as the manual — drop in your own `.md` file to
 read something else.
 
 ## Get a document in
 
-There are three ways to load a book, and none of them leave your device:
+There are a few ways to load a book:
 
-1. Press the **document** button in the toolbar and pick a `.md` file.
-2. Drag a `.md`, `.markdown` or `.txt` file anywhere onto this page.
-3. Copy some Markdown and paste it while this welcome screen is showing.
+1. Press the **document** button in the toolbar and pick a `.md`,
+   `.markdown` or `.mdx` file.
+2. Drag a `.md`, `.markdown`, `.mdx` or `.txt` file anywhere onto this page.
+3. Choose **Open from url…** in the document menu to fetch a `.md`,
+   `.markdown` or `.mdx` file straight from the web — the only route that
+   ever uses your connection.
 
 The document you are reading stays on this device, so a refresh or an
 accidental close is never a disaster.
@@ -2992,17 +3081,19 @@ stays offline:
 
 - **Copy Markdown** — the raw source, ready to paste anywhere.
 - **Copy rendered text** — the formatted document as plain text.
-- **Download .md** — the source as a file.
+- **Download .md** — the source as a file. The label follows the imported
+  file's extension: a `.mdx` import reads **Download .mdx** and downloads
+  exactly the file you brought in.
 - **Export standalone HTML** — this entire reader, with the current document
   baked in, as one portable file you can share or archive.
 - **Export publishable HTML** — an exact replica of this entire reader with
   the current document baked in, ready to share or host. A handful of
   authoring tools never travel with a publication: "Open Markdown file…",
-  "Edit HTML metadata" and "Export publishable HTML" are removed from its
-  document menu, the "Include document menu in publication" switch is gone,
-  and the open-file (Ctrl+O) and document-menu rows disappear from its
-  shortcut map and key listeners. Everything else — reading settings,
-  search, the outline, printing — behaves exactly as it does here.
+  "Open from url…", "Edit HTML metadata" and "Export publishable HTML" are
+  removed from its document menu, the "Include document menu in publication"
+  switch is gone, and the open-file (Ctrl+O) and document-menu rows disappear
+  from its shortcut map and key listeners. Everything else — reading
+  settings, search, the outline, printing — behaves exactly as it does here.
 - **Print / save as PDF** — paper follows your reading settings (theme,
   size, width, typeface, header accent), right down to the page margins,
   with external links expanded so URLs survive on paper.
@@ -3122,7 +3213,8 @@ if(__exports != exports)module.exports = exports;return module.exports}));
  *   (compact tokenizer, R18), Enhancer (incl. live task checkboxes),
  *   Storage, Settings (reader prefs incl. header accent), Source/Exporter
  *   (import, lifecycle, export suite), Nav (TOC, scrollspy, progress),
- *   Find (search layer), Palette (R17), Help (R19), Lightbox (M5A), UI, App.
+ *   Find (search layer), Palette (R17), Help (R19), Lightbox (M5A),
+ *   Meta, OpenUrl (1.8.0), UI, App.
  * Security model: imported Markdown is untrusted input; all rendered HTML is
  * sanitised and URL schemes are allow-listed before reaching the DOM. The
  * embed/export path stores the document as a JSON payload with every "<"
@@ -3134,7 +3226,7 @@ if(__exports != exports)module.exports = exports;return module.exports}));
 (function () {
     "use strict";
 
-    var APP_VERSION = "1.7.3";
+    var APP_VERSION = "1.8.0";
     var LS_PREFIX = "mdwb:";
     var MOBILE_QUERY = "(max-width: 720px)";
     var HEAVY_DOC_CHARS = 200 * 1024; /* show a loading state above this */
@@ -4012,6 +4104,10 @@ if(__exports != exports)module.exports = exports;return module.exports}));
                 title: doc.meta.title || "Untitled",
                 source: doc.source,
             };
+            /* Import provenance rides along so a restored document keeps
+               its extension-aware Download label and file naming (1.8.0). */
+            if (doc.fileName) rec.fileName = doc.fileName;
+            if (doc.fileExt) rec.fileExt = doc.fileExt;
             var ok = Storage.setJSON("current", rec);
             this.last = ok ? rec : null;
             return ok;
@@ -4309,12 +4405,34 @@ if(__exports != exports)module.exports = exports;return module.exports}));
             }, 1000);
         },
 
+        /* Extension-aware download naming (1.8.0): an imported .mdx file
+           downloads exactly as it was imported — original name, original
+           extension, untouched content. Everything else keeps the classic
+           "<title-slug>.md" behaviour. */
+        downloadExt: function () {
+            return App.current && App.current.fileExt === "mdx" ? "mdx" : "md";
+        },
+
+        downloadName: function () {
+            if (!App.current) return "document.md";
+            if (
+                Exporter.downloadExt() === "mdx" &&
+                App.current.fileName
+            )
+                return App.current.fileName;
+            return Exporter.fileStem() + "." + Exporter.downloadExt();
+        },
+
+        downloadLabel: function () {
+            return "Download ." + Exporter.downloadExt();
+        },
+
         download: function () {
             if (!App.current) return;
             try {
                 Exporter.downloadBlob(
                     App.current.source,
-                    Exporter.fileStem() + ".md",
+                    Exporter.downloadName(),
                     "text/markdown;charset=utf-8",
                 );
                 UI.toast("Download started");
@@ -4375,8 +4493,12 @@ if(__exports != exports)module.exports = exports;return module.exports}));
         },
 
         /* Authoring items that never travel with a publication (removed
-           from the doc-menu, hidden from the Help map, listeners off). */
-        EXCLUDED_MENU_IDS: ["mi-open", "mi-meta", "mi-publish", "mi-pubmenu"],
+           from the doc-menu, hidden from the Help map, listeners off).
+           mi-open-url is ALWAYS excluded — a publication must not gain a
+           network-fetching entry point. */
+        EXCLUDED_MENU_IDS: [
+            "mi-open", "mi-open-url", "mi-meta", "mi-publish", "mi-pubmenu",
+        ],
         EXCLUDED_HELP_ROWS: ["Open a file", "Import, export & strict HTML"],
 
         /* Upsert one <meta name="…" content="…"> into the replica head. */
@@ -4896,6 +5018,10 @@ if(__exports != exports)module.exports = exports;return module.exports}));
             Lightbox.close();
             App.closePopovers();
             Palette.close();
+            /* The search layer and the contents drawer are mutually
+               exclusive (1.8.0): opening one dismisses the other. */
+            if (App.dom.tocSidebar.classList.contains("open"))
+                App.closeToc();
             Find.isOpen = true;
             Find.bar.setAttribute("data-open", "on");
             document.documentElement.setAttribute("data-find", "on");
@@ -5184,7 +5310,7 @@ if(__exports != exports)module.exports = exports;return module.exports}));
                     },
                     {
                         group: "Commands",
-                        label: "Download .md",
+                        label: Exporter.downloadLabel(),
                         run: function () {
                             Exporter.download();
                         },
@@ -5574,6 +5700,222 @@ if(__exports != exports)module.exports = exports;return module.exports}));
         },
     };
 
+    /* ==================== Open from url (1.8.0) ============================
+       Fetch a Markdown file (.md, .markdown, .mdx) straight from a web
+       address. The dialog reuses the meta-panel shell — same 520px width,
+       pinned header, inset card and 50/50 footer — with one label-less,
+       left-aligned, single-line url field. The Open button owns the loading
+       state (disabled + spinner while the fetch is in flight); failures
+       re-enable the form and surface a toast, successes close silently and
+       render. Fetches are strictly user-initiated: the app performs no
+       network activity of its own. */
+
+    var OpenUrl = {
+        open: false,
+        busy: false,
+        opener: null,
+        EXTS: ["md", "markdown", "mdx"],
+
+        init: function () {
+            OpenUrl.backdrop = $("openurl-backdrop");
+            OpenUrl.panel = $("openurl-panel");
+            OpenUrl.input = $("mfu-url");
+            OpenUrl.openBtn = $("openurl-open");
+            OpenUrl.backdrop.addEventListener("pointerdown", function (e) {
+                if (e.target === OpenUrl.backdrop && !OpenUrl.busy)
+                    OpenUrl.close();
+            });
+            $("openurl-close").addEventListener("click", function () {
+                if (!OpenUrl.busy) OpenUrl.close();
+            });
+            $("openurl-cancel").addEventListener("click", function () {
+                if (!OpenUrl.busy) OpenUrl.close();
+            });
+            $("openurl-form").addEventListener("submit", function (e) {
+                e.preventDefault();
+                if (!OpenUrl.busy) OpenUrl.fetch();
+            });
+        },
+
+        openEditor: function () {
+            if (OpenUrl.open || OpenUrl.busy) return;
+            App.closePopovers();
+            OpenUrl.opener = document.activeElement;
+            OpenUrl.open = true;
+            OpenUrl.input.value = "";
+            OpenUrl.setBusy(false);
+            OpenUrl.backdrop.hidden = false;
+            OpenUrl.input.focus();
+        },
+
+        close: function () {
+            if (!OpenUrl.open) return;
+            OpenUrl.open = false;
+            OpenUrl.backdrop.hidden = true;
+            OpenUrl.setBusy(false);
+            if (OpenUrl.opener && OpenUrl.opener.focus) {
+                try {
+                    OpenUrl.opener.focus();
+                } catch (e) {}
+            }
+            OpenUrl.opener = null;
+        },
+
+        setBusy: function (on) {
+            OpenUrl.busy = on;
+            OpenUrl.openBtn.classList.toggle("is-loading", on);
+            OpenUrl.openBtn.disabled = on;
+            if (on) OpenUrl.openBtn.setAttribute("aria-busy", "true");
+            else OpenUrl.openBtn.removeAttribute("aria-busy");
+        },
+
+        /* Validate the address: http(s) only, and — when the path carries a
+           recognisable extension — one of the supported Markdown formats.
+           Extension-less addresses are allowed (servers decide content). */
+        parse: function (raw) {
+            var v = String(raw == null ? "" : raw).trim();
+            if (!v)
+                return {
+                    error: "Enter a url to open a Markdown file from the web",
+                };
+            var u = null;
+            try {
+                u = new URL(v);
+            } catch (e) {
+                u = null;
+            }
+            if (!u || (u.protocol !== "http:" && u.protocol !== "https:"))
+                return { error: "Enter a valid http(s) url" };
+            var m = /\.([a-z0-9]+)$/i.exec(u.pathname);
+            if (
+                m &&
+                OpenUrl.EXTS.indexOf(m[1].toLowerCase()) === -1
+            )
+                return {
+                    error:
+                        "Unsupported file type (." +
+                        m[1].toLowerCase() +
+                        ") — use .md, .markdown or .mdx",
+                };
+            return { url: u.href };
+        },
+
+        /* Derive import provenance from the address: the decoded basename
+           keeps a supported extension, extension-less paths gain ".md". */
+        fileMeta: function (href) {
+            var name = null;
+            var ext = null;
+            try {
+                var u = new URL(href);
+                var raw = (u.pathname.split("/").pop() || "").trim();
+                var base = raw;
+                try {
+                    base = decodeURIComponent(raw);
+                } catch (e) {}
+                if (base) {
+                    var m = /\.([a-z0-9]+)$/i.exec(base);
+                    if (
+                        m &&
+                        OpenUrl.EXTS.indexOf(m[1].toLowerCase()) !== -1
+                    ) {
+                        ext = m[1].toLowerCase();
+                        name = base;
+                    } else if (!m) {
+                        ext = "md";
+                        name = base + ".md";
+                    }
+                }
+            } catch (e) {}
+            return { name: name, ext: ext };
+        },
+
+        fetch: function () {
+            if (!OpenUrl.open || OpenUrl.busy) return;
+            var parsed = OpenUrl.parse(OpenUrl.input.value);
+            if (parsed.error) {
+                UI.toast(parsed.error, true);
+                return;
+            }
+            var doFetch = window.fetch || null;
+            if (!doFetch) {
+                UI.toast(
+                    "Fetching isn't available in this browser",
+                    true,
+                );
+                return;
+            }
+            OpenUrl.setBusy(true);
+            var fail = function (msg) {
+                OpenUrl.setBusy(false);
+                UI.toast(msg, true);
+            };
+            var netFail = function () {
+                fail("Couldn't reach that url — check it and your connection");
+            };
+            var p;
+            try {
+                p = doFetch(parsed.url, { credentials: "omit" });
+            } catch (e) {
+                netFail();
+                return;
+            }
+            Promise.resolve(p)
+                .then(function (res) {
+                    if (!res.ok) {
+                        fail(
+                            "Couldn't load the file — the server returned " +
+                                res.status +
+                                (res.statusText
+                                    ? " (" + res.statusText + ")"
+                                    : ""),
+                        );
+                        return null;
+                    }
+                    var type =
+                        res.headers && res.headers.get
+                            ? res.headers.get("content-type") || ""
+                            : "";
+                    return res
+                        .text()
+                        .then(function (text) {
+                            return { text: text, type: type };
+                        });
+                })
+                .then(function (got) {
+                    if (got === null) return; /* already toasted */
+                    var text = String(got.text == null ? "" : got.text);
+                    if (!text.trim()) {
+                        fail("That url returned an empty file");
+                        return;
+                    }
+                    if (
+                        /text\/html/i.test(got.type) &&
+                        /^\s*(<!doctype|<html)/i.test(text)
+                    ) {
+                        fail(
+                            "That url returned an HTML page, not a Markdown file",
+                        );
+                        return;
+                    }
+                    if (text.indexOf("\u0000") !== -1) {
+                        fail("That looks like a binary file, not Markdown");
+                        return;
+                    }
+                    OpenUrl.setBusy(false);
+                    OpenUrl.close();
+                    App.pendingFile = OpenUrl.fileMeta(parsed.url);
+                    App.loadDocument(text, "url");
+                })
+                .catch(function () {
+                    netFail();
+                });
+        },
+
+        state: function () {
+            return { open: OpenUrl.open, busy: OpenUrl.busy };
+        },
+    };
+
     /* ==================== Image lightbox (M5, Proposal A) ==================
        Click any content image to read it at full size; Esc, a click or the
        close button dismisses it. Images inside links (badges) never zoom —
@@ -5669,6 +6011,7 @@ if(__exports != exports)module.exports = exports;return module.exports}));
     var App = {
         state: "booting", /* booting | empty | loading | reading | error */
         current: null,
+        pendingFile: null,
         persistFailed: false,
 
         cacheDom: function () {
@@ -5711,6 +6054,7 @@ if(__exports != exports)module.exports = exports;return module.exports}));
                 Palette.init();
                 Help.init();
                 Meta.init();
+                OpenUrl.init();
                 Lightbox.init();
                 App.purgeLegacyStrictPrefs();
                 Source.loadLast();
@@ -5719,6 +6063,14 @@ if(__exports != exports)module.exports = exports;return module.exports}));
                 if (embedded) {
                     App.loadDocument(embedded, "embedded");
                 } else if (Source.last && Source.last.source) {
+                    /* Restored docs keep their import provenance so the
+                       extension-aware Download label survives a refresh. */
+                    App.pendingFile = Source.last.fileExt
+                        ? {
+                              name: Source.last.fileName || null,
+                              ext: Source.last.fileExt,
+                          }
+                        : null;
                     App.loadDocument(Source.last.source, "restored");
                 } else {
                     App.showEmpty();
@@ -5825,7 +6177,13 @@ if(__exports != exports)module.exports = exports;return module.exports}));
                     headings: headings,
                     strictHtml: strictHtml,
                     persisted: origin === "embedded",
+                    /* Import provenance (1.8.0): the original file name and
+                       extension when the document arrived from a file or a
+                       url — null for embedded/restored-without-provenance. */
+                    fileName: App.pendingFile ? App.pendingFile.name : null,
+                    fileExt: App.pendingFile ? App.pendingFile.ext : null,
                 };
+                App.pendingFile = null;
                 App.current = doc;
 
                 App.applyDoc(doc);
@@ -5847,11 +6205,14 @@ if(__exports != exports)module.exports = exports;return module.exports}));
                 UI.hideLoading();
                 App.state = "reading";
                 App.syncToolbar();
+                App.syncDownloadLabel();
 
                 if (origin === "restored")
                     UI.toast('Restored "' + meta.title + '"');
                 else if (origin === "imported" || origin === "pasted")
                     UI.toast('Opened "' + meta.title + '"');
+                /* origin "url" stays silent by design: the dialog closing is
+                   the success signal (1.8.0). */
             } catch (err) {
                 UI.hideLoading();
                 App.showFatal(err);
@@ -5928,6 +6289,7 @@ if(__exports != exports)module.exports = exports;return module.exports}));
             Nav.buildToC([]);
             Nav.updateChrome();
             App.syncToolbar();
+            App.syncDownloadLabel();
         },
 
         /* ------------------------- chrome & states ------------------------- */
@@ -5949,6 +6311,29 @@ if(__exports != exports)module.exports = exports;return module.exports}));
                 var el = $(id);
                 if (el) el.disabled = disabled;
             });
+        },
+
+        /* Extension-aware doc-menu label (1.8.0): "Download .mdx" for an
+           imported .mdx file, "Download .md" otherwise. Only the item's
+           text node is rewritten — the icon must survive. */
+        syncDownloadLabel: function () {
+            var item = $("mi-download");
+            if (!item) return;
+            var label = Exporter.downloadLabel();
+            for (var i = 0; i < item.childNodes.length; i++) {
+                var n = item.childNodes[i];
+                if (
+                    n.nodeType === 3 &&
+                    n.nodeValue &&
+                    n.nodeValue.indexOf("Download") !== -1
+                ) {
+                    n.nodeValue = n.nodeValue.replace(
+                        /Download\s+\.[a-z0-9]+/i,
+                        label,
+                    );
+                    break;
+                }
+            }
         },
 
         /* ------------------- popovers (Aa settings, menu) ------------------ */
@@ -6098,6 +6483,9 @@ if(__exports != exports)module.exports = exports;return module.exports}));
 
         openToc: function () {
             Lightbox.close();
+            /* Contents drawer and search layer are mutually exclusive
+               (1.8.0): opening the drawer dismisses an open findbar. */
+            if (Find.isOpen) Find.close();
             App.dom.tocSidebar.classList.add("open");
             App.dom.btnToc.classList.add("active");
             App.dom.btnToc.setAttribute("aria-expanded", "true");
@@ -6139,10 +6527,11 @@ if(__exports != exports)module.exports = exports;return module.exports}));
                 },
             );
 
-            /* Document menu: import, metadata, export suite (R14) and the
-               publication preference. Published replicas strip the authoring
-               items (mi-open / mi-meta / mi-publish / mi-pubmenu), so those
-               bindings must tolerate absence — removed, not hidden. */
+            /* Document menu: import, url import, metadata, export suite
+               (R14, 1.8.0) and the publication preference. Published
+               replicas strip the authoring items (mi-open / mi-open-url /
+               mi-meta / mi-publish / mi-pubmenu), so those bindings must
+               tolerate absence — removed, not hidden. */
             var bindMenuItem = function (id, fn) {
                 var el = $(id);
                 if (el) el.addEventListener("click", fn);
@@ -6150,6 +6539,10 @@ if(__exports != exports)module.exports = exports;return module.exports}));
             bindMenuItem("mi-open", function () {
                 App.closePopovers();
                 App.dom.fileInput.click();
+            });
+            bindMenuItem("mi-open-url", function () {
+                App.closePopovers();
+                OpenUrl.openEditor();
             });
             bindMenuItem("mi-meta", function () {
                 App.closePopovers();
@@ -6406,8 +6799,8 @@ if(__exports != exports)module.exports = exports;return module.exports}));
                 });
 
             /* Keyboard layer (§8, R17, R19): Esc priority lightbox > palette >
-               metadata > help > find > popover > drawer; Tab traps whichever
-               overlay is open; Ctrl/Cmd+K palette, Ctrl/Cmd+F search,
+               url-open > metadata > help > find > popover > drawer; Tab traps
+               whichever overlay is open; Ctrl/Cmd+K palette, Ctrl/Cmd+F search,
                Ctrl/Cmd+O open file, / search, ? shortcut map, T contents.
                Single letters need no modifier and never fire while typing. */
             document.addEventListener("keydown", function (e) {
@@ -6420,6 +6813,13 @@ if(__exports != exports)module.exports = exports;return module.exports}));
                     if (Palette.open) {
                         e.preventDefault();
                         Palette.close(true);
+                        return;
+                    }
+                    if (OpenUrl.open) {
+                        e.preventDefault();
+                        /* A fetch in flight owns the dialog — it cannot be
+                           dismissed until the request settles. */
+                        if (!OpenUrl.busy) OpenUrl.close();
                         return;
                     }
                     if (Meta.open) {
@@ -6487,13 +6887,15 @@ if(__exports != exports)module.exports = exports;return module.exports}));
                         ? Palette.panel
                         : Meta.open
                           ? Meta.panel
-                          : Help.open
-                            ? Help.panel
-                            : App.activePopover
-                              ? App.activePopover.pop
-                              : App.dom.tocSidebar.classList.contains("open")
-                                ? App.dom.tocSidebar
-                                : null;
+                          : OpenUrl.open
+                            ? OpenUrl.panel
+                            : Help.open
+                              ? Help.panel
+                              : App.activePopover
+                                ? App.activePopover.pop
+                                : App.dom.tocSidebar.classList.contains("open")
+                                  ? App.dom.tocSidebar
+                                  : null;
                     if (!container) return;
                     var focusables = container.querySelectorAll(
                         'a[href], button:not([disabled]), input, textarea, [contenteditable="true"]',
@@ -6532,7 +6934,9 @@ if(__exports != exports)module.exports = exports;return module.exports}));
                     e.preventDefault();
                     Help.toggle();
                 } else if (e.key === "t" || e.key === "T") {
-                    if (!Find.isOpen && !Help.open) App.toggleToc();
+                    /* No Find guard: opening the contents drawer now closes
+                       an open search layer (mutual exclusion, 1.8.0). */
+                    if (!Help.open) App.toggleToc();
                 }
             });
 
@@ -6589,16 +6993,9 @@ if(__exports != exports)module.exports = exports;return module.exports}));
                     App.loadDocument(text, "pasted");
             });
 
-            /* Import: paste while the empty state is showing (R3) */
-            document.addEventListener("paste", function (e) {
-                if (App.state !== "empty") return;
-                var text =
-                    e.clipboardData && e.clipboardData.getData("text/plain");
-                if (text && text.trim()) {
-                    e.preventDefault();
-                    App.loadDocument(text, "pasted");
-                }
-            });
+            /* Import: paste while the empty state is showing was removed
+               (1.8.0) — the behaviour never worked reliably and the welcome
+               document no longer advertises it. */
 
             /* Recovery guard: only armed when a document could not persist */
             window.addEventListener("beforeunload", function (e) {
@@ -6612,12 +7009,22 @@ if(__exports != exports)module.exports = exports;return module.exports}));
         /* ---------------------------- import (R3) -------------------------- */
 
         handleFile: function (file) {
-            var okName = /\.(md|markdown|mdown|txt)$/i.test(file.name || "");
+            var okName = /\.(md|markdown|mdown|mdx|txt)$/i.test(file.name || "");
             var okType = /^text\/|markdown/i.test(file.type || "");
             if (!okName && !okType) {
-                UI.toast("Unsupported file — please open .md or .txt", true);
+                UI.toast(
+                    "Unsupported file — please open .md, .markdown or .mdx",
+                    true,
+                );
                 return;
             }
+            /* Provenance for the extension-aware Download label + naming:
+               .mdx imports download exactly as they were imported (1.8.0). */
+            var m = /\.([a-z0-9]+)$/i.exec(file.name || "");
+            App.pendingFile = {
+                name: file.name || null,
+                ext: m ? m[1].toLowerCase() : null,
+            };
             var read;
             if (file.text) read = file.text();
             else {
@@ -6835,6 +7242,29 @@ if(__exports != exports)module.exports = exports;return module.exports}));
             state: function () {
                 return Meta.state();
             },
+        },
+        openUrlDialog: {
+            open: function () {
+                OpenUrl.openEditor();
+            },
+            close: function () {
+                if (!OpenUrl.busy) OpenUrl.close();
+            },
+            /* Harness/test hook: prefill the field and submit in one call. */
+            submit: function (url) {
+                if (!OpenUrl.open) OpenUrl.openEditor();
+                OpenUrl.input.value = url == null ? "" : String(url);
+                OpenUrl.fetch();
+            },
+            state: function () {
+                return OpenUrl.state();
+            },
+        },
+        downloadName: function () {
+            return Exporter.downloadName();
+        },
+        downloadLabel: function () {
+            return Exporter.downloadLabel();
         },
         purgeLegacyPrefs: function () {
             App.purgeLegacyStrictPrefs();

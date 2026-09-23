@@ -77,9 +77,10 @@
                 --shadow-1: 0 4px 12px rgba(0, 0, 0, 0.15);
                 --shadow-2: 0 8px 28px rgba(0, 0, 0, 0.22);
 
-                /* Z-index scale: scrim < drawer < header < progress < popover
-                   < toast < drop */
+                /* Z-index scale: scrim < btn-top < drawer < header < progress
+                   < popover < toast < drop */
                 --z-scrim: 800;
+                --z-btn-top: 850;
                 --z-drawer: 900;
                 --z-header: 1000;
                 --z-search: 1400;

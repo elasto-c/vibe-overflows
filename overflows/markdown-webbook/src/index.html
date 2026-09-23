@@ -9,7 +9,7 @@
         <meta name="color-scheme" content="light dark" />
         <meta
             name="description"
-            content="A portable, self-contained Markdown reading environment. Open a .md file, drag and drop, or paste — no server, no account, no network."
+            content="A portable, self-contained Markdown reading environment. Open a .md file, drag and drop, or fetch one from a url — no server, no account."
         />
         <title>Markdown Webbook</title>
         <link
@@ -62,7 +62,7 @@
                 <input
                     type="file"
                     id="file-input"
-                    accept=".md,.markdown,.mdown,.txt,text/markdown,text/plain"
+                    accept=".md,.markdown,.mdown,.mdx,.txt,text/markdown,text/plain"
                     hidden
                 />
                 <span id="header-title" class="doc-title">Markdown Webbook</span>
@@ -254,6 +254,10 @@
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
                 Open Markdown file…
             </button>
+            <button class="menu-item" id="mi-open-url" role="menuitem" type="button">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
+                Open from url…
+            </button>
             <button class="menu-item" id="mi-meta" role="menuitem" type="button">
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="8" y1="13" x2="16" y2="13"></line><line x1="8" y1="17" x2="13" y2="17"></line></svg>
                 Edit HTML metadata
@@ -394,7 +398,7 @@
                 <h1 class="empty-title">A quiet place to read Markdown</h1>
                 <p class="empty-sub">
                     Open a file, drag &amp; drop it anywhere on this page, or
-                    paste Markdown to begin.
+                    fetch one from a url to begin.
                 </p>
                 <button id="btn-open-empty" type="button" class="btn-primary">
                     Open a Markdown file
@@ -469,6 +473,37 @@
                     <div class="meta-foot">
                         <button type="button" class="mbtn" id="meta-cancel">Cancel</button>
                         <button type="submit" class="mbtn primary" id="meta-save">Save</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <div id="openurl-backdrop" class="help-backdrop" hidden>
+            <div id="openurl-panel" class="help-panel meta-panel" role="dialog" aria-modal="true" aria-labelledby="openurl-heading">
+                <div class="meta-pin">
+                    <div class="meta-head">
+                        <h2 id="openurl-heading">Open from url</h2>
+                        <button id="openurl-close" class="modal-x" aria-label="Close url opener" title="Close (Esc)">
+                            <svg viewBox="0 0 24 24" aria-hidden="true">
+                                <line x1="18" y1="6" x2="6" y2="18"></line>
+                                <line x1="6" y1="6" x2="18" y2="18"></line>
+                            </svg>
+                        </button>
+                    </div>
+                    <p class="meta-sub">Fetch a Markdown file straight from the web and read it here. Supported formats: <code>.md</code>, <code>.markdown</code> and <code>.mdx</code>.</p>
+                </div>
+                <form id="openurl-form" novalidate>
+                    <div class="meta-card">
+                        <div class="meta-row openurl-row">
+                            <input id="mfu-url" name="url" type="url" inputmode="url" enterkeyhint="go" placeholder="https://example.com/book.md" autocomplete="off" spellcheck="false" aria-label="Markdown file url" />
+                        </div>
+                    </div>
+                    <div class="meta-foot">
+                        <button type="button" class="mbtn" id="openurl-cancel">Cancel</button>
+                        <button type="submit" class="mbtn primary" id="openurl-open">
+                            <span class="mbtn-label">Open</span>
+                            <span class="mbtn-spinner" aria-hidden="true"></span>
+                        </button>
                     </div>
                 </form>
             </div>

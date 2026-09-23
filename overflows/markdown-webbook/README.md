@@ -18,13 +18,17 @@ push.
 
 ---
 
-## Why Markdown Webbook?
+## Why a single file
 
-1. **Your browser is already the reader.** A good Markdown reading experience should not require another app. Open the file in a modern browser and read—no installation, server, or account required.
-
-2. **Content should not require a page design.** Publishing content should not require designing a webpage first. Markdown Webbook turns articles, reports, essays, and guides into finished, thoughtfully designed webpages without having to design each one.
-
-3. **Markdown becomes portable, self-contained content.** The webbook can be stored locally, carried on USB, emailed, or sent by instant message. The recipient only needs a browser—not a Markdown reader—to open and read it.
+- **Zero dependencies at runtime.** The Markdown parser (marked) and the
+  sanitiser (DOMPurify) are vendored and inlined; there is no CDN, no font
+  download and no service worker to register.
+- **`file://` first.** Every feature — importing files, exporting, printing,
+  settings persistence — is designed to work when the file is opened directly
+  from disk, not only from a web server.
+- **One artifact to carry.** The reader, the publisher and the app's entire
+  runtime ship as a single ~340 KB file that can be emailed, committed to a
+  repository, or dropped onto a USB stick.
 
 ## Quick start
 
@@ -58,6 +62,8 @@ controls:
 
 | Action | How |
 |---|---|
+| Open a local file | document menu → **Open Markdown file…**, <kbd>Ctrl</kbd>+<kbd>O</kbd>, or drag a `.md`/`.markdown`/`.mdx`/`.txt` file onto the page |
+| Open from a url | document menu → **Open from url…** — fetches a `.md`, `.markdown` or `.mdx` file straight from a web address (the only network call the app can ever make, and only when you trigger it) |
 | Table of contents | <kbd>T</kbd> or the contents button — nested headings with scrollspy |
 | Command palette | <kbd>Ctrl</kbd>/<kbd>Cmd</kbd> + <kbd>K</kbd> — jump to headings, run actions |
 | Search the document | <kbd>/</kbd> or <kbd>Ctrl</kbd>+<kbd>F</kbd> — with next/previous match navigation |
@@ -66,6 +72,7 @@ controls:
 | Code blocks | per-block **COLLAPSE** (88 px fading window) and **WRAP** toggles, plus line numbers |
 | Tables | columns hold a single line until they would exceed half the container (`--wb-col-cap`, container-query math), then wrap; a genuinely unbreakable line pans a complete table box with hidden scrollbars, mouse drag, and scroll-driven edge shadows that render only while the table actually pans |
 | Task lists | checkboxes are live — ticking one persists per document |
+| Panels | the contents drawer and the search layer are mutually exclusive — opening one dismisses the other |
 | Images | click to open the lightbox |
 | Progress | slim bottom progress bar tracks reading position |
 
@@ -95,18 +102,21 @@ pipeline:
    default posture for a publication) hides both entirely.
 3. **Export publishable HTML** — produces an **exact 1:1 replica** of the
    Markdown Webbook itself: same markup, styles, runtime, reading settings,
-   code/table/print behaviour. Exactly four authoring exceptions are removed
-   from the replica's document menu — *Open Markdown file…*, *Edit HTML
-   metadata*, *Export publishable HTML* and the *Include document menu in
-   publication* switch — and the open-file (<kbd>Ctrl</kbd>+<kbd>O</kbd>) and
+   code/table/print behaviour. Exactly five authoring exceptions are removed
+   from the replica's document menu — *Open Markdown file…*, *Open from
+   url…*, *Edit HTML metadata*, *Export publishable HTML* and the *Include
+   document menu in publication* switch — so a publication never carries a
+   file-open or network-fetch entry point. The open-file (<kbd>Ctrl</kbd>+<kbd>O</kbd>) and
    document-menu shortcut entries are removed from its Help panel **and** its
    key listeners. The metadata you entered in step 1 is embedded in the head.
 4. Share the exported file. It is a standalone publication: self-contained,
    offline, and carrying no authoring tools.
 
 Other export routes in the same menu: **Copy Markdown**, **Copy rendered
-text**, **Download .md**, **Export standalone HTML** (reader shell with the
-current document embedded), and **Print / save as PDF**.
+text**, **Download .md** (the label follows the imported file's extension —
+an `.mdx` import reads **Download .mdx** and downloads exactly the file that
+was imported), **Export standalone HTML** (reader shell with the current
+document embedded), and **Print / save as PDF**.
 
 ---
 
@@ -182,18 +192,20 @@ npm run verify      # node tools/verify_refactor.js
 ```
 
 This executes the built file inside jsdom (real marked, real DOMPurify, real
-app pipeline) and runs **142 checks**: the 44-construct Markdown corpus
+app pipeline) and runs **156 checks**: the 44-construct Markdown corpus
 (parser correctness, sanitisation policy, embed containment), integration
 flows (import, settings persistence, TOC/scrollspy, command palette,
 highlighting, lightbox), the publication suite (1:1 replica, authoring
-exclusions, metadata round-trip, hostile-content containment) and the print
-pipeline. Current status: **142 / 142 pass**.
+exclusions, metadata round-trip, hostile-content containment), the print
+pipeline, and the v1.8.0 suite (url import success/failure/loading, mdx
+naming, panel exclusivity, z-order). Current status: **156 / 156 pass**.
 
-An optional Chromium visual smoke (`tools/smoke_v173.py`,
+An optional Chromium visual smoke (`tools/smoke_v180.py`,
 `pip install playwright && playwright install chromium`) drives the real
-browser across the latest refinements — panel metrics, shadow gating on
-pannable tables, shared modal close buttons, mobile search metrics — and
-screenshots each state. Current status: **21 / 21 pass**, zero console errors.
+browser across the latest refinements — the url modal's shell metrics and
+loading spinner, silent success vs error toasts over intercepted routes, the
+extension-aware Download label, panel mutual exclusion — and screenshots
+each state. Current status: **16 / 16 pass**.
 
 ## Repository layout
 
@@ -219,8 +231,8 @@ markdown-webbook/
 │   ├── markdown_webbook_audit.md           ← the 20-section audit that drove the refactors
 │   └── quality-of-life-improvement-plan.md ← milestone plan (M0–M5) + feature proposals
 └── tools/
-    ├── verify_refactor.js                  ← 142-check jsdom verification harness
-    └── smoke_v173.py                       ← Chromium visual smoke (Playwright)
+    ├── verify_refactor.js                  ← 156-check jsdom verification harness
+    └── smoke_v180.py                       ← Chromium visual smoke (Playwright)
 ```
 
 ## Version history
@@ -239,8 +251,11 @@ markdown-webbook/
 | 1.7.2 | Meta dialog rhythm (top-less form padding, 10 px description margins, borderless pinned header), mobile search field floor, table rework: container-capped columns (single line → wrap past 50 %), complete-table horizontal pan with scroll-driven edge shadows |
 | 1.7.3 | Edge shadows only on tables that truly pan (`.is-pannable` measured per render/resize — an inactive scroll timeline would otherwise paint raw gradients on static tables), one shared `.modal-x` close button across modals, panel padding isolation (meta `0`, help `--space-4`) with a coherent 1.05 rem/700 header voice, 720 px find bar tightening (no gap, 30 px buttons, content-sized match count) |
 | repo (1.7.3) | Real build process: sources split into `src/` (shell, 7 stylesheets, boot + app layers, vendored marked/DOMPurify, default document) + `build.js` reassembling the artifact byte-identically with the containment escape and self-checks; the artifact is assembled into `dist/` and committed, with CI verifying the committed copy stays byte-identical to the sources |
+| 1.8.0 | **Open from url…** (doc-menu entry + meta-panel-style modal: label-less left-aligned url field, spinner loading state on Open, silent success, error toasts for network/HTTP/unsupported-extension/HTML-page/binary cases, http(s)-only with `.md`/`.markdown`/`.mdx` validation, always excluded from publications); `.mdx` imports (file picker + drag & drop + url) treated as Markdown with the download preserving the original name and content; extension-aware **Download .md / .mdx** label in the menu and palette; contents drawer and search layer made mutually exclusive; back-to-top button layered below the contents drawer; removed the never-working paste-into-welcome-screen import (and its mention in the sample document) |
 
 ## Compatibility
 
 Modern Chromium, Firefox, Safari and Edge. Works from `file://` or any static
-host. No network access is required or performed at any point.
+host. No network access is required; the one exception is the user-initiated
+**Open from url…** fetch, which requests exactly the address you type —
+nothing else ever leaves the device.

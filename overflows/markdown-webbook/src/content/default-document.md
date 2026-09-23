@@ -8,17 +8,21 @@ lang: en
 # Welcome to the Markdown Webbook
 
 This file is a **portable, self-contained Markdown reader**. It is one HTML
-file with no server, no account, no build step and no network calls. This
+file with no server, no account and no build step — it only ever reaches
+out to the network when you ask it to (Open from url…). This
 embedded sample book doubles as the manual — drop in your own `.md` file to
 read something else.
 
 ## Get a document in
 
-There are three ways to load a book, and none of them leave your device:
+There are a few ways to load a book:
 
-1. Press the **document** button in the toolbar and pick a `.md` file.
-2. Drag a `.md`, `.markdown` or `.txt` file anywhere onto this page.
-3. Copy some Markdown and paste it while this welcome screen is showing.
+1. Press the **document** button in the toolbar and pick a `.md`,
+   `.markdown` or `.mdx` file.
+2. Drag a `.md`, `.markdown`, `.mdx` or `.txt` file anywhere onto this page.
+3. Choose **Open from url…** in the document menu to fetch a `.md`,
+   `.markdown` or `.mdx` file straight from the web — the only route that
+   ever uses your connection.
 
 The document you are reading stays on this device, so a refresh or an
 accidental close is never a disaster.
@@ -150,17 +154,19 @@ stays offline:
 
 - **Copy Markdown** — the raw source, ready to paste anywhere.
 - **Copy rendered text** — the formatted document as plain text.
-- **Download .md** — the source as a file.
+- **Download .md** — the source as a file. The label follows the imported
+  file's extension: a `.mdx` import reads **Download .mdx** and downloads
+  exactly the file you brought in.
 - **Export standalone HTML** — this entire reader, with the current document
   baked in, as one portable file you can share or archive.
 - **Export publishable HTML** — an exact replica of this entire reader with
   the current document baked in, ready to share or host. A handful of
   authoring tools never travel with a publication: "Open Markdown file…",
-  "Edit HTML metadata" and "Export publishable HTML" are removed from its
-  document menu, the "Include document menu in publication" switch is gone,
-  and the open-file (Ctrl+O) and document-menu rows disappear from its
-  shortcut map and key listeners. Everything else — reading settings,
-  search, the outline, printing — behaves exactly as it does here.
+  "Open from url…", "Edit HTML metadata" and "Export publishable HTML" are
+  removed from its document menu, the "Include document menu in publication"
+  switch is gone, and the open-file (Ctrl+O) and document-menu rows disappear
+  from its shortcut map and key listeners. Everything else — reading
+  settings, search, the outline, printing — behaves exactly as it does here.
 - **Print / save as PDF** — paper follows your reading settings (theme,
   size, width, typeface, header accent), right down to the page margins,
   with external links expanded so URLs survive on paper.

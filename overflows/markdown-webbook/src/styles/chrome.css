@@ -166,7 +166,9 @@
                 align-items: center;
                 justify-content: center;
                 box-shadow: var(--shadow-1);
-                z-index: var(--z-popover);
+                /* Below the TOC drawer (--z-drawer) so the open contents
+                   panel always covers the floating button (1.8.0). */
+                z-index: var(--z-btn-top);
                 transition:
                     opacity 0.2s ease,
                     transform 0.2s ease;

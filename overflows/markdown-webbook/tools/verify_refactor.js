@@ -44,6 +44,34 @@ const ok = (note) => ({ ok: true, note });
 const bad = (note) => ({ ok: false, note });
 const parse = (out) => window.document.implementation.createHTMLDocument ? new window.DOMParser().parseFromString(out, "text/html") : null;
 
+/* Async checks (1.8.0): the url-import flow settles over microtasks. The
+   bodies are chained strictly sequentially (they share the singleton
+   OpenUrl dialog), run after the whole sync batch, and report() awaits
+   every promise before printing. No timers — microtask hops only — so
+   ordering against the export round-trip timers stays deterministic. */
+const asyncPromises = [];
+let asyncQueue = Promise.resolve();
+function checkA(id, label, fn) {
+  const entry = { id, label, verdict: "CRASH", note: "pending" };
+  results.push(entry);
+  const run = asyncQueue
+    .then(() => fn(window.MDWebbook, window))
+    .then((r) => {
+      entry.verdict = r && r.ok ? "PASS" : "FAIL";
+      entry.note = (r && r.note) || "";
+    })
+    .catch((e) => {
+      entry.verdict = "CRASH";
+      entry.note = e.message;
+    });
+  asyncPromises.push(run);
+  asyncQueue = run;
+}
+const tick = () => Promise.resolve();
+const drain = async (n) => {
+  for (let i = 0; i < (n || 12); i++) await tick();
+};
+
 setTimeout(() => {
   const W = window.MDWebbook;
   if (!W) {
@@ -1075,8 +1103,8 @@ setTimeout(() => {
       (b) => b.id,
     );
     const expected = [
-      "mi-open", "mi-meta", "mi-copy-md", "mi-copy-text", "mi-download",
-      "mi-export", "mi-publish", "mi-print", "mi-pubmenu",
+      "mi-open", "mi-open-url", "mi-meta", "mi-copy-md", "mi-copy-text",
+      "mi-download", "mi-export", "mi-publish", "mi-print", "mi-pubmenu",
     ];
     const same =
       ids.length === expected.length &&
@@ -1158,6 +1186,246 @@ setTimeout(() => {
                    " metaIso=" + metaIso + " head=" + head + " gap=" + sGap +
                    " field=" + sField + " count=" + sCount + " btns=" + sBtns);
   });
+
+  /* ---------------- v1.8.0: url import, mdx, exclusivity ---------------- */
+  const UrlStubs = {
+    md: (text) => ({
+      ok: true, status: 200, statusText: "OK",
+      headers: { get: (k) => (/content-type/i.test(k) ? "text/markdown" : null) },
+      text: () => Promise.resolve(text),
+    }),
+    err: (status, statusText) => ({
+      ok: false, status, statusText,
+      headers: { get: () => null },
+      text: () => Promise.resolve(""),
+    }),
+  };
+  const curRec = () => {
+    const raw = window.localStorage.getItem("mdwb:current");
+    try { return JSON.parse(raw) || {}; } catch (e) { return {}; }
+  };
+  const toastText = () =>
+    window.document.getElementById("toast").textContent;
+
+  check("U09", "url dialog: meta-panel shell, label-less left field, spinner", () => {
+    /* Placement: directly beneath Open Markdown file… in the doc menu. */
+    const miOpen = doc.getElementById("mi-open");
+    const miUrl = doc.getElementById("mi-open-url");
+    const placed = miOpen && miUrl && miOpen.nextElementSibling === miUrl &&
+      /Open from url…/.test(miUrl.textContent);
+    /* Modal reuses the meta-panel shell; the field is label-less, typed
+       for urls, left-aligned; spinner + loading styles ship. */
+    const shell = /<div id="openurl-panel" class="help-panel meta-panel"/.test(html);
+    const field = /<input id="mfu-url" name="url" type="url" inputmode="url" [^>]*aria-label="Markdown file url"/.test(html) &&
+      !/label[^>]*for="mfu-url"/.test(html);
+    const left = /\.openurl-row input\s*{[^}]*text-align:\s*left/.test(html);
+    const formPad = /#openurl-form\s*{[^}]*padding:\s*0px var\(--space-5\) var\(--space-5\)/.test(html);
+    const spin = /\.mbtn \.mbtn-spinner\s*{[^}]*border-radius:\s*50%/.test(html) &&
+      /@keyframes mbtn-spin/.test(html) &&
+      /\.mbtn\.is-loading \.mbtn-label\s*{[^}]*display:\s*none/.test(html) &&
+      /\.mbtn\.is-loading \.mbtn-spinner\s*{[^}]*display:\s*inline-block/.test(html);
+    const btn = !!doc.getElementById("openurl-open") &&
+      !!doc.querySelector("#openurl-open .mbtn-label") &&
+      !!doc.querySelector("#openurl-open .mbtn-spinner") &&
+      doc.getElementById("openurl-open").textContent.indexOf("Open") !== -1;
+    const closedAtBoot = doc.getElementById("openurl-backdrop").hidden === true;
+    return placed && shell && field && left && formPad && spin && btn &&
+      closedAtBoot
+      ? ok() : bad("place=" + placed + " shell=" + shell + " field=" + field +
+                   " left=" + left + " pad=" + formPad + " spin=" + spin +
+                   " btn=" + btn + " boot=" + closedAtBoot);
+  });
+  check("U10", "url dialog: opens from the doc menu, Esc closes, busy locks", () => {
+    W.openMarkdown("# U10\n\nbody");
+    doc.getElementById("btn-docs").click();
+    const viaMenu = doc.getElementById("doc-menu").hidden === false;
+    doc.getElementById("mi-open-url").click();
+    const opened = W.openUrlDialog.state().open &&
+      doc.getElementById("openurl-backdrop").hidden === false;
+    doc.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+    const closed = doc.getElementById("openurl-backdrop").hidden === true &&
+      !W.openUrlDialog.state().open;
+    return viaMenu && opened && closed
+      ? ok() : bad("menu=" + viaMenu + " open=" + opened + " close=" + closed);
+  });
+  check("U11", "toc drawer and findbar are mutually exclusive", () => {
+    W.openMarkdown("# U11\n\n" + "para\n\n".repeat(8) + "## Tail\n");
+    doc.getElementById("btn-toc").click();
+    const tocFirst = doc.getElementById("toc-sidebar").classList.contains("open");
+    W.find.open();
+    const findOpen = doc.getElementById("findbar").getAttribute("data-open") === "on";
+    const tocAfterFind = doc.getElementById("toc-sidebar").classList.contains("open");
+    doc.getElementById("btn-toc").click();
+    const tocAgain = doc.getElementById("toc-sidebar").classList.contains("open");
+    const findAfterToc = doc.getElementById("findbar").getAttribute("data-open") === "on";
+    W.find.close();
+    doc.getElementById("btn-toc").click(); /* leave closed */
+    return tocFirst && findOpen && !tocAfterFind && tocAgain && !findAfterToc
+      ? ok() : bad("toc1=" + tocFirst + " find=" + findOpen +
+                   " toc2=" + tocAfterFind + " toc3=" + tocAgain +
+                   " find3=" + findAfterToc);
+  });
+  check("U12", "btn-top sits below the toc drawer in z-order", () => {
+    const tok = html.match(/--z-btn-top:\s*(\d+)/);
+    const drawer = html.match(/--z-drawer:\s*(\d+)/);
+    const used = /\.btn-top\s*{[^}]*z-index:\s*var\(--z-btn-top\)/.test(html);
+    const lower = tok && drawer && Number(tok[1]) < Number(drawer[1]);
+    return tok && drawer && used && lower
+      ? ok("btn-top=" + tok[1] + " < drawer=" + drawer[1])
+      : bad("tok=" + (tok && tok[1]) + " drawer=" + (drawer && drawer[1]) +
+            " used=" + used);
+  });
+  check("U13", "mdx import allowed; welcome-paste feature fully removed", () => {
+    const accept = /id="file-input"\s+accept="\.md,\.markdown,\.mdown,\.mdx,\.txt,text\/markdown,text\/plain"/.test(html);
+    const handle = html.indexOf("(md|markdown|mdown|mdx|txt)$/i") !== -1;
+    const noPasteDoc = !html.includes("Copy some Markdown and paste it");
+    const noPasteListener = !/document\.addEventListener\("paste"/.test(html);
+    const noEmptyPasteCopy = !html.includes("paste Markdown to begin");
+    return accept && handle && noPasteDoc && noPasteListener && noEmptyPasteCopy
+      ? ok() : bad("accept=" + accept + " handle=" + handle +
+                   " doc=" + noPasteDoc + " listener=" + noPasteListener +
+                   " empty=" + noEmptyPasteCopy);
+  });
+  check("U14", "download label/name: extension-aware defaults", () => {
+    W.openMarkdown("# Welcome To The Markdown Webbook\n\nbody");
+    const label = W.downloadLabel();
+    const name = W.downloadName();
+    const itemText = doc.getElementById("mi-download").textContent;
+    const labelOk = label === "Download .md" &&
+      itemText.indexOf("Download .md") !== -1 &&
+      itemText.indexOf("Download .mdx") === -1;
+    const nameOk = /^welcome-to-the-markdown-webbook\.md$/.test(name);
+    return labelOk && nameOk
+      ? ok("name=" + name)
+      : bad("label=" + label + " name=" + name + " item=" + itemText.trim());
+  });
+  checkA("U01", "url import success: silent render, provenance kept", async (Wl) => {
+    Wl.openMarkdown("# Seed\n\ntext");
+    const toastBefore = toastText();
+    window.fetch = () => Promise.resolve(UrlStubs.md("# From URL\n\nhello url body"));
+    Wl.openUrlDialog.submit("https://example.com/docs/notes.md");
+    await drain();
+    const st = Wl.openUrlDialog.state();
+    const rendered = doc.getElementById("content").textContent.indexOf("From URL") !== -1;
+    const silent = toastText() === toastBefore;
+    const rec = curRec();
+    const prov = rec.fileName === "notes.md" && rec.fileExt === "md";
+    const label = Wl.downloadLabel() === "Download .md";
+    return !st.open && !st.busy && rendered && silent && prov && label
+      ? ok("file=" + rec.fileName)
+      : bad("open=" + st.open + " busy=" + st.busy + " rendered=" + rendered +
+            " silent=" + silent + " prov=" + prov + " label=" + label);
+  });
+  checkA("U02", "mdx via url: label flips to Download .mdx, name preserved", async (Wl) => {
+    Wl.openMarkdown("# Seed\n\ntext");
+    window.fetch = () => Promise.resolve(UrlStubs.md("# MDX Guide\n\nbody"));
+    Wl.openUrlDialog.submit("https://example.com/guide.mdx");
+    await drain();
+    const st = Wl.openUrlDialog.state();
+    const rec = curRec();
+    const itemText = doc.getElementById("mi-download").textContent;
+    const label = Wl.downloadLabel() === "Download .mdx" &&
+      itemText.indexOf("Download .mdx") !== -1;
+    const name = Wl.downloadName() === "guide.mdx";
+    const rendered = doc.getElementById("content").textContent.indexOf("MDX Guide") !== -1;
+    return !st.open && rec.fileExt === "mdx" && rec.fileName === "guide.mdx" &&
+      label && name && rendered
+      ? ok("label=Download .mdx name=" + Wl.downloadName())
+      : bad("open=" + st.open + " ext=" + rec.fileExt + " label=" + label +
+            " name=" + name + " rendered=" + rendered);
+  });
+  checkA("U03", "url import 404: toast, form re-enabled, dialog stays", async (Wl) => {
+    Wl.openMarkdown("# Seed\n\ntext");
+    window.fetch = () => Promise.resolve(UrlStubs.err(404, "Not Found"));
+    Wl.openUrlDialog.submit("https://example.com/missing.md");
+    await drain();
+    const st = Wl.openUrlDialog.state();
+    const btn = doc.getElementById("openurl-open");
+    const toastOk = toastText().indexOf("404") !== -1 &&
+      doc.getElementById("toast").classList.contains("is-error");
+    return st.open && !st.busy && !btn.disabled && toastOk
+      ? ok("toast=" + toastText())
+      : bad("open=" + st.open + " busy=" + st.busy +
+            " disabled=" + btn.disabled + " toast=" + toastText());
+  });
+  checkA("U04", "url import network failure: reachable-error toast", async (Wl) => {
+    Wl.openMarkdown("# Seed\n\ntext");
+    window.fetch = () => Promise.reject(new TypeError("Failed to fetch"));
+    Wl.openUrlDialog.submit("https://example.com/down.md");
+    await drain();
+    const st = Wl.openUrlDialog.state();
+    const toastOk = toastText().indexOf("Couldn't reach that url") !== -1;
+    return st.open && !st.busy && toastOk
+      ? ok() : bad("open=" + st.open + " busy=" + st.busy +
+                   " toast=" + toastText());
+  });
+  checkA("U05", "url import: unsupported extension rejected before fetch", async (Wl) => {
+    Wl.openMarkdown("# Seed\n\ntext");
+    let called = false;
+    window.fetch = () => { called = true; return Promise.resolve(UrlStubs.md("x")); };
+    Wl.openUrlDialog.submit("https://example.com/picture.zip");
+    await drain();
+    const toastOk = toastText().indexOf("Unsupported file type (.zip)") !== -1;
+    const st = Wl.openUrlDialog.state();
+    return !called && !st.busy && st.open && toastOk
+      ? ok() : bad("fetched=" + called + " busy=" + st.busy +
+                   " open=" + st.open + " toast=" + toastText());
+  });
+  check("U06", "url import: non-http(s) and junk input rejected", () => {
+    W.openMarkdown("# Seed\n\ntext");
+    window.fetch = () => Promise.resolve(UrlStubs.md("x"));
+    W.openUrlDialog.submit("ftp://example.com/x.md");
+    const t1 = toastText();
+    W.openUrlDialog.submit("not a url at all");
+    const t2 = toastText();
+    const st = W.openUrlDialog.state();
+    return t1 === "Enter a valid http(s) url" &&
+      t2 === "Enter a valid http(s) url" && st.open && !st.busy
+      ? ok() : bad("t1=" + t1 + " t2=" + t2 + " open=" + st.open);
+  });
+  checkA("U07", "url import: Open button enters loading state mid-flight", async (Wl) => {
+    Wl.openMarkdown("# Seed\n\ntext");
+    let resolveFetch;
+    window.fetch = () => new Promise((res) => { resolveFetch = res; });
+    Wl.openUrlDialog.submit("https://example.com/slow.md");
+    const btn = doc.getElementById("openurl-open");
+    const midBusy = Wl.openUrlDialog.state().busy && btn.disabled &&
+      btn.classList.contains("is-loading") &&
+      btn.getAttribute("aria-busy") === "true";
+    resolveFetch(UrlStubs.md("# Loaded later\n\nlate body"));
+    await drain();
+    const st = Wl.openUrlDialog.state();
+    const rendered = doc.getElementById("content").textContent.indexOf("late body") !== -1;
+    return midBusy && !st.busy && !st.open && !btn.disabled && rendered
+      ? ok() : bad("midBusy=" + midBusy + " busy=" + st.busy +
+                   " open=" + st.open + " rendered=" + rendered);
+  });
+  checkA("U08", "url import: HTML pages and binary payloads are refused", async (Wl) => {
+    Wl.openMarkdown("# Seed\n\ntext");
+    window.fetch = () =>
+      Promise.resolve({
+        ok: true, status: 200, statusText: "OK",
+        headers: { get: (k) => (/content-type/i.test(k) ? "text/html; charset=utf-8" : null) },
+        text: () => Promise.resolve("<!DOCTYPE html>\n<html><body>hi</body></html>"),
+      });
+    Wl.openUrlDialog.submit("https://example.com/page.md");
+    await drain();
+    const htmlGuard = toastText().indexOf("HTML page, not a Markdown file") !== -1;
+    const st1 = Wl.openUrlDialog.state();
+    window.fetch = () =>
+      Promise.resolve({
+        ok: true, status: 200, statusText: "OK",
+        headers: { get: () => "application/octet-stream" },
+        text: () => Promise.resolve("PK\u0000\u0000binary\u0000stuff"),
+      });
+    Wl.openUrlDialog.submit("https://example.com/blob.md");
+    await drain();
+    const binGuard = toastText().indexOf("binary file, not Markdown") !== -1;
+    return htmlGuard && binGuard && st1.open && !st1.busy &&
+      !Wl.openUrlDialog.state().busy
+      ? ok() : bad("html=" + htmlGuard + " bin=" + binGuard +
+                   " toast=" + toastText());
+  });
   check("PUB1", "publishable export: 1:1 replica with metadata in head", () => {
     W.openMarkdown("# T\n\nbody text");
     const out = W.publication.build();
@@ -1198,7 +1466,8 @@ setTimeout(() => {
     const off = d2.getElementById("btn-docs").hidden === true &&
       d2.getElementById("doc-menu").hidden === true;
     /* Always excluded: removed from the doc-menu in both variants. */
-    const excludedGone = ["mi-open", "mi-meta", "mi-publish", "mi-pubmenu"]
+    const excludedGone = ["mi-open", "mi-open-url", "mi-meta", "mi-publish",
+      "mi-pubmenu"]
       .every((id) => !d1.getElementById(id) && !d2.getElementById(id));
     /* Everything else is 1:1: the export group stays intact. */
     const kept = ["mi-copy-md", "mi-copy-text", "mi-download", "mi-export",
@@ -1379,7 +1648,7 @@ setTimeout(() => {
                 " title=" + w2.document.title,
             );
       });
-      report();
+      Promise.all(asyncPromises).then(report, report);
     }, 120);
   }, 30);
   return;
@@ -1403,6 +1672,7 @@ setTimeout(() => {
   console.log("v1.5.0 additions (publication): metadata dialog, publishable export with publication-only menu, include-menu toggle, per-doc strict removal, themed print margins");
   console.log("v1.6.0 additions (replica publication): exact 1:1 published replica with authoring exclusions + MDWB_PUB listener suppression, conditional doc-menu visibility, rawHtml scroll pin, iOS grouped-list metadata editor, fixed menu measure + blue toggle label");
   console.log("v1.7.0 additions (polish): meta-panel spacing/size/colour pass (38px rows, 88px plain-text Description editor, inverted solid Save, space-6 subtext), plain-text publication toggle label, code line numbers + per-block COLLAPSE with fading 88px window, table column floors/caps with hidden-bar drag-to-scroll");
+  console.log("v1.8.0 additions: Open-from-url import (meta-panel modal, loading state, http(s)+extension validation, HTML/binary guards, toasts on failure only, always excluded from publications), .mdx imports with preserved download naming + dynamic Download label, toc/findbar mutual exclusion, btn-top below the toc drawer, welcome-paste removal");
   process.exit(fail + crash > 0 ? 1 : 0);
   }
 }, 150);

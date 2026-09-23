@@ -470,6 +470,53 @@
                 background: var(--text-color);
                 opacity: 0.9;
             }
+            .mbtn:disabled {
+                cursor: default;
+            }
+
+            /* --- Open-from-url dialog (1.8.0) ---------------------------------
+               The meta-panel shell hosting one label-less url field: single
+               line, left-aligned text, same 38px row voice. The Open button
+               owns the async loading state — the label swaps to a spinner,
+               the control goes inert, and failures re-enable the form with
+               an error toast while successes close the dialog silently. */
+            #openurl-form {
+                padding: 0px var(--space-5) var(--space-5);
+            }
+            .openurl-row input {
+                /* .meta-row input right-aligns values; a url field reads
+                   left-to-right (declared after it, same specificity). */
+                text-align: left;
+            }
+            #openurl-open {
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+            }
+            .mbtn .mbtn-spinner {
+                display: none;
+                width: 16px;
+                height: 16px;
+                flex: 0 0 auto;
+                border: 2px solid currentColor;
+                border-right-color: transparent;
+                border-radius: 50%;
+                animation: mbtn-spin 0.7s linear infinite;
+            }
+            .mbtn.is-loading {
+                pointer-events: none;
+            }
+            .mbtn.is-loading .mbtn-label {
+                display: none;
+            }
+            .mbtn.is-loading .mbtn-spinner {
+                display: inline-block;
+            }
+            @keyframes mbtn-spin {
+                to {
+                    transform: rotate(360deg);
+                }
+            }
             @media (max-width: 480px) {
                 .meta-row label {
                     min-width: 74px;
