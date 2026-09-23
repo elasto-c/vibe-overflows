@@ -63,7 +63,8 @@ controls:
 | Action | How |
 |---|---|
 | Open a local file | document menu → **Open Markdown file…**, <kbd>Ctrl</kbd>+<kbd>O</kbd>, or drag a `.md`/`.markdown`/`.mdx`/`.txt` file onto the page |
-| Open from a url | document menu → **Open from url…** — fetches a `.md`, `.markdown` or `.mdx` file straight from a web address (the only network call the app can ever make, and only when you trigger it) |
+| Open from a url | document menu → **Open from url…** — fetches a `.md`, `.markdown` or `.mdx` file straight from a web address (a network call made only when you trigger it) |
+| Paste from clipboard | document menu → **Paste from clipboard** — renders the most recent clipboard text; clipboards that hold no text (an image, a file) surface an error toast, never a broken render |
 | Table of contents | <kbd>T</kbd> or the contents button — nested headings with scrollspy |
 | Command palette | <kbd>Ctrl</kbd>/<kbd>Cmd</kbd> + <kbd>K</kbd> — jump to headings, run actions |
 | Search the document | <kbd>/</kbd> or <kbd>Ctrl</kbd>+<kbd>F</kbd> — with next/previous match navigation |
@@ -74,6 +75,7 @@ controls:
 | Task lists | checkboxes are live — ticking one persists per document |
 | Panels | the contents drawer and the search layer are mutually exclusive — opening one dismisses the other |
 | Images | click to open the lightbox |
+| Remote media | document menu → **Fetch & embed remote media** (default off): **off** strips image/video/audio urls from every import (file, url, clipboard, dragged text) so the document reads and exports as pure local text; **on** downloads each image at import time and rewrites it as a `data:image/…` uri inside the source, so images survive every export path. Media-ness is decided by the construct a url appears in (markdown image syntax, `<img>`/`<video>`/`<audio>`/`<picture>` tags) — never by file extension — and fenced code blocks and inline code spans are always left untouched. Images that fail to fetch or aren't images keep their original url |
 | Progress | slim bottom progress bar tracks reading position |
 
 **Raw HTML policy** is a reading setting (`Raw HTML: Sanitise / Strip`). It
@@ -91,32 +93,40 @@ All settings persist per browser under the `mdwb:*` `localStorage` namespace.
 ## Publishing workflow
 
 The Document menu (the file icon in the toolbar) carries the publishing
-pipeline:
+pipeline, in menu order:
 
 1. **Edit HTML metadata** — an iOS-style grouped dialog captures the
-   publication's **Title**, **Author** and **Description**. These are written
+   publication's **Title**, **Author** and **Description** (grouped in its
+   own menu section just below *Print / save as PDF*). These are written
    into the exported file's `<head>` (title tag, author meta, description
    meta). Leaving a field empty falls back to the document's own values.
-2. **Include document menu in publication** — a toggle that decides whether
+2. **Fetch & embed remote media** — the import-time media switch described
+   above; it shapes what the exported editions contain.
+3. **Include document menu in publication** — a toggle that decides whether
    the exported edition shows the document button and menu at all. Off (the
    default posture for a publication) hides both entirely.
-3. **Export publishable HTML** — produces an **exact 1:1 replica** of the
+4. **Export publishable HTML** — produces an **exact 1:1 replica** of the
    Markdown Webbook itself: same markup, styles, runtime, reading settings,
-   code/table/print behaviour. Exactly five authoring exceptions are removed
-   from the replica's document menu — *Open Markdown file…*, *Open from
-   url…*, *Edit HTML metadata*, *Export publishable HTML* and the *Include
-   document menu in publication* switch — so a publication never carries a
-   file-open or network-fetch entry point. The open-file (<kbd>Ctrl</kbd>+<kbd>O</kbd>) and
-   document-menu shortcut entries are removed from its Help panel **and** its
-   key listeners. The metadata you entered in step 1 is embedded in the head.
-4. Share the exported file. It is a standalone publication: self-contained,
+   code/table/print behaviour. Exactly seven authoring exceptions are
+   removed from the replica's document menu — *Open Markdown file…*, *Open
+   from url…*, *Paste from clipboard*, *Edit HTML metadata*, *Export
+   publishable HTML*, the *Fetch & embed remote media* switch and the
+   *Include document menu in publication* switch — so a publication never
+   carries a file-open, clipboard-paste, network-fetch or metadata entry
+   point. The open-file (<kbd>Ctrl</kbd>+<kbd>O</kbd>) and document-menu shortcut entries are
+   removed from its Help panel **and** its key listeners. The metadata you
+   entered in step 1 is embedded in the head.
+5. Share the exported file. It is a standalone publication: self-contained,
    offline, and carrying no authoring tools.
 
 Other export routes in the same menu: **Copy Markdown**, **Copy rendered
 text**, **Download .md** (the label follows the imported file's extension —
 an `.mdx` import reads **Download .mdx** and downloads exactly the file that
 was imported), **Export standalone HTML** (reader shell with the current
-document embedded), and **Print / save as PDF**.
+document embedded), and **Print / save as PDF**. Imports arrive through
+**Open Markdown file…**, **Open from url…**, **Paste from clipboard** or
+drag & drop — and every import passes through the media pipeline described
+above before it renders.
 
 ---
 
@@ -192,20 +202,24 @@ npm run verify      # node tools/verify_refactor.js
 ```
 
 This executes the built file inside jsdom (real marked, real DOMPurify, real
-app pipeline) and runs **156 checks**: the 44-construct Markdown corpus
+app pipeline) and runs **165 checks**: the 44-construct Markdown corpus
 (parser correctness, sanitisation policy, embed containment), integration
 flows (import, settings persistence, TOC/scrollspy, command palette,
 highlighting, lightbox), the publication suite (1:1 replica, authoring
 exclusions, metadata round-trip, hostile-content containment), the print
-pipeline, and the v1.8.0 suite (url import success/failure/loading, mdx
-naming, panel exclusivity, z-order). Current status: **156 / 156 pass**.
+pipeline, the v1.8.0 suite (url import success/failure/loading, mdx
+naming, panel exclusivity, z-order) and the v1.8.1 suite (menu placements,
+embed-toggle persistence, strip/embed media passes, clipboard paste flow and
+guards, sanitiser data-uri policy). Current status: **165 / 165 pass**.
 
-An optional Chromium visual smoke (`tools/smoke_v180.py`,
+An optional Chromium visual smoke (`tools/smoke_v181.py`,
 `pip install playwright && playwright install chromium`) drives the real
-browser across the latest refinements — the url modal's shell metrics and
-loading spinner, silent success vs error toasts over intercepted routes, the
-extension-aware Download label, panel mutual exclusion — and screenshots
-each state. Current status: **16 / 16 pass**.
+browser across the latest refinements — the menu placements, the url modal's
+shell metrics and loading spinner, silent success vs error toasts over
+intercepted routes, the extension-aware Download label, clipboard paste with
+stubbed clipboard payloads, image embedding into data uris over an
+intercepted image route, panel mutual exclusion — and screenshots each
+state. Current status: **19 / 19 pass**.
 
 ## Repository layout
 
@@ -231,8 +245,8 @@ markdown-webbook/
 │   ├── markdown_webbook_audit.md           ← the 20-section audit that drove the refactors
 │   └── quality-of-life-improvement-plan.md ← milestone plan (M0–M5) + feature proposals
 └── tools/
-    ├── verify_refactor.js                  ← 156-check jsdom verification harness
-    └── smoke_v180.py                       ← Chromium visual smoke (Playwright)
+    ├── verify_refactor.js                  ← 165-check jsdom verification harness
+    └── smoke_v181.py                       ← Chromium visual smoke (Playwright)
 ```
 
 ## Version history
@@ -252,10 +266,15 @@ markdown-webbook/
 | 1.7.3 | Edge shadows only on tables that truly pan (`.is-pannable` measured per render/resize — an inactive scroll timeline would otherwise paint raw gradients on static tables), one shared `.modal-x` close button across modals, panel padding isolation (meta `0`, help `--space-4`) with a coherent 1.05 rem/700 header voice, 720 px find bar tightening (no gap, 30 px buttons, content-sized match count) |
 | repo (1.7.3) | Real build process: sources split into `src/` (shell, 7 stylesheets, boot + app layers, vendored marked/DOMPurify, default document) + `build.js` reassembling the artifact byte-identically with the containment escape and self-checks; the artifact is assembled into `dist/` and committed, with CI verifying the committed copy stays byte-identical to the sources |
 | 1.8.0 | **Open from url…** (doc-menu entry + meta-panel-style modal: label-less left-aligned url field, spinner loading state on Open, silent success, error toasts for network/HTTP/unsupported-extension/HTML-page/binary cases, http(s)-only with `.md`/`.markdown`/`.mdx` validation, always excluded from publications); `.mdx` imports (file picker + drag & drop + url) treated as Markdown with the download preserving the original name and content; extension-aware **Download .md / .mdx** label in the menu and palette; contents drawer and search layer made mutually exclusive; back-to-top button layered below the contents drawer; removed the never-working paste-into-welcome-screen import (and its mention in the sample document) |
+| 1.8.1 | **Paste from clipboard** (doc-menu item below *Open from url…*: clipboard read via the async items API with text/plain type inspection — non-text, empty and denied clipboards each get a specific error toast, text content renders through the media pipeline with the usual success toast) and **Fetch & embed remote media** (doc-menu switch above *Include document menu in publication*, default off): off strips media (image/video/audio) constructs from every import, on fetches each image once at import time (content-type + magic-byte check, per-image failure fallback, dedupe + concurrency pool) and rewrites it into a sanitiser-allowed `data:image/*` uri so exports carry the images; media detection is structural (markdown syntax + media HTML tags), code spans/fences are protected; both new items are always excluded from publications; *Edit HTML metadata* regrouped into its own menu section below *Print / save as PDF* |
 
 ## Compatibility
 
 Modern Chromium, Firefox, Safari and Edge. Works from `file://` or any static
-host. No network access is required; the one exception is the user-initiated
-**Open from url…** fetch, which requests exactly the address you type —
-nothing else ever leaves the device.
+host. No network access is required except where you ask for it: the
+**Open from url…** fetch requests exactly the address you type, and the
+**Fetch & embed remote media** switch fetches exactly the image urls inside
+documents you import. **Paste from clipboard** uses the browser's async
+clipboard API — most browsers ask for permission on first use, and a denied
+prompt (or a clipboard holding no text) surfaces a clear error toast rather
+than a broken import. Nothing else ever leaves the device.

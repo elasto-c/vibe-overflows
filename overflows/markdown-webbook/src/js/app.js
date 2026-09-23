@@ -7,7 +7,7 @@
  *   Storage, Settings (reader prefs incl. header accent), Source/Exporter
  *   (import, lifecycle, export suite), Nav (TOC, scrollspy, progress),
  *   Find (search layer), Palette (R17), Help (R19), Lightbox (M5A),
- *   Meta, OpenUrl (1.8.0), UI, App.
+ *   Meta, OpenUrl (1.8.0), MediaTools (1.8.1), UI, App.
  * Security model: imported Markdown is untrusted input; all rendered HTML is
  * sanitised and URL schemes are allow-listed before reaching the DOM. The
  * embed/export path stores the document as a JSON payload with every "<"
@@ -19,7 +19,7 @@
 (function () {
     "use strict";
 
-    var APP_VERSION = "1.8.0";
+    var APP_VERSION = "1.8.1";
     var LS_PREFIX = "mdwb:";
     var MOBILE_QUERY = "(max-width: 720px)";
     var HEAVY_DOC_CHARS = 200 * 1024; /* show a loading state above this */
@@ -218,8 +218,13 @@
     /* Untrusted-input policy: allow-list schemes; DOMPurify handles tags. */
 
     var Sanitizer = {
+        /* Allow-list schemes. data:image/* joined in 1.8.1 so the "Fetch &
+           embed remote media" pass (which rewrites image urls to data
+           uris in the document source) survives sanitisation; every other
+           data: flavour — text/html, application/javascript, … — stays
+           blocked exactly as before. */
         SAFE_URI:
-            /^(?:(?:https?|mailto):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i,
+            /^(?:(?:https?|mailto):|data:image\/[a-z0-9.+-]+(?:;[a-z0-9.+=-]*)*,|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i,
 
         /* Untrusted-input policy: allow-list schemes; DOMPurify handles tags.
            Strict mode never reaches this with an emptied allow-list — raw
@@ -1247,11 +1252,12 @@
        The published file is an EXACT 1:1 replica of the Markdown Webbook
        itself — same markup, same styles, same runtime — built from the
        pristine boot snapshot (App.bootHTML) so the live DOM is never
-       mutated. Exactly four authoring exceptions are applied, nothing more:
+       mutated. Exactly seven authoring exceptions are applied, nothing more:
 
          1. Doc-menu, always excluded (removed): "Open Markdown file…",
-            "Edit HTML metadata", "Export publishable HTML" and the
-            "Include document menu in publication" switch.
+            "Open from url…", "Paste from clipboard", "Edit HTML metadata",
+            "Export publishable HTML", the "Fetch & embed remote media"
+            switch and the "Include document menu in publication" switch.
          2. Shortcuts removed from the Help panel AND from the key
             listeners: Open a file (Ctrl+O) and the Document-menu row. The
             app skips them when it boots with window.MDWB_PUB set.
@@ -1288,9 +1294,12 @@
         /* Authoring items that never travel with a publication (removed
            from the doc-menu, hidden from the Help map, listeners off).
            mi-open-url is ALWAYS excluded — a publication must not gain a
-           network-fetching entry point. */
+           network-fetching entry point. mi-paste is an import action and
+           mi-embed the import-media switch: both only make sense while
+           authoring, so neither travels (1.8.1). */
         EXCLUDED_MENU_IDS: [
-            "mi-open", "mi-open-url", "mi-meta", "mi-publish", "mi-pubmenu",
+            "mi-open", "mi-open-url", "mi-paste", "mi-meta", "mi-publish",
+            "mi-embed", "mi-pubmenu",
         ],
         EXCLUDED_HELP_ROWS: ["Open a file", "Import, export & strict HTML"],
 
@@ -1333,7 +1342,9 @@
         },
 
         /* Remove the excluded menu items, then prune separators that would
-           dangle at the menu's edges (a hairline with nothing on one side). */
+           dangle at the menu's edges (a hairline with nothing on one side).
+           Pruning repeats until stable: removing one dangling separator can
+           cascade a new one (e.g. two adjacent hrs at the tail, 1.8.1). */
         stripMenuItems: function (root) {
             Publication.EXCLUDED_MENU_IDS.forEach(function (id) {
                 var n = root.getElementById(id);
@@ -1341,11 +1352,22 @@
             });
             var menu = root.getElementById("doc-menu");
             if (!menu) return;
-            var seps = menu.querySelectorAll("hr.menu-sep");
-            Array.prototype.forEach.call(seps, function (hr) {
-                if (!hr.previousElementSibling || !hr.nextElementSibling)
-                    hr.parentNode.removeChild(hr);
-            });
+            var pruned = true;
+            while (pruned) {
+                pruned = false;
+                Array.prototype.forEach.call(
+                    menu.querySelectorAll("hr.menu-sep"),
+                    function (hr) {
+                        if (
+                            !hr.previousElementSibling ||
+                            !hr.nextElementSibling
+                        ) {
+                            hr.parentNode.removeChild(hr);
+                            pruned = true;
+                        }
+                    },
+                );
+            }
         },
 
         /* Shortcut map: the removed Document rows disappear with them. */
@@ -2696,8 +2718,16 @@
                     }
                     OpenUrl.setBusy(false);
                     OpenUrl.close();
-                    App.pendingFile = OpenUrl.fileMeta(parsed.url);
-                    App.loadDocument(text, "url");
+                    var meta = OpenUrl.fileMeta(parsed.url);
+                    /* The media pre-render pass (1.8.1) runs before the
+                       render; the dialog stays in its loading state until
+                       it settles so closing still coincides with the
+                       document appearing. prepare() never rejects. */
+                    MediaTools.prepare(text).then(function (prepared) {
+                        OpenUrl.close();
+                        App.pendingFile = meta;
+                        App.loadDocument(prepared, "url");
+                    });
                 })
                 .catch(function () {
                     netFail();
@@ -2765,6 +2795,487 @@
 
         state: function () {
             return { open: Lightbox.open };
+        },
+    };
+
+    /* ================= Remote media pipeline (1.8.1) =======================
+       A load-time pre-render pass for every document obtained from a local
+       file, a url or the clipboard, driven by the "Fetch & embed remote
+       media" doc-menu switch (default off):
+
+         off — media constructs (markdown images incl. reference/shorthand
+               forms and linked badges, plus raw HTML img/video/audio/
+               picture/source/track) are stripped from the source, so the
+               document reads and exports as pure local text.
+         on  — every *image* url is fetched once, type-checked by header
+               (with a magic-byte sniff when the server is unhelpful) and
+               rewritten into a base64 data uri, so the images live inside
+               the document and survive every export path.
+
+       Media-ness is decided by STRUCTURE (the construct the url appears
+       in), never by file extension. Fenced code blocks and inline code
+       spans are masked out first, so documented examples survive both
+       passes untouched. Failures are per-image: a url that cannot be
+       fetched or is not an image keeps its original form, and the pass
+       never rejects — a broken image must never break an import. */
+
+    var MediaTools = {
+        /* Refuse to inline absurd payloads; oversized images keep their url. */
+        EMBED_MAX_BYTES: 25 * 1024 * 1024,
+
+        enabled: false,
+
+        init: function () {
+            MediaTools.enabled = Storage.getJSON("embedMedia", false) === true;
+        },
+
+        state: function () {
+            return { enabled: MediaTools.enabled };
+        },
+
+        setEnabled: function (on) {
+            MediaTools.enabled = !!on;
+            Storage.setJSON("embedMedia", MediaTools.enabled);
+        },
+
+        /* The single entry point used by every import path. Contract:
+           ALWAYS resolves with a string, never rejects. */
+        prepare: function (md) {
+            var text = String(md == null ? "" : md);
+            if (!MediaTools.enabled) {
+                try {
+                    return Promise.resolve(MediaTools.stripMedia(text));
+                } catch (e) {
+                    return Promise.resolve(text);
+                }
+            }
+            try {
+                return MediaTools.embedImages(text).catch(function () {
+                    return text;
+                });
+            } catch (e) {
+                return Promise.resolve(text);
+            }
+        },
+
+        /* ---------- masking: keep code out of both passes ---------- */
+
+        /* Replace fenced code blocks (line state) and inline code spans
+           with \u0000M<n>\u0000 placeholders. Placeholder-bearing lines
+           are never blank, so the whitespace clean-up cannot eat them. */
+        maskCode: function (text) {
+            var stash = [];
+            var put = function (seg) {
+                stash.push(seg);
+                return "\u0000M" + (stash.length - 1) + "\u0000";
+            };
+            var lines = String(text).split("\n");
+            var out = [];
+            var fence = null; /* opening marker, e.g. "```" or "~~~" */
+            for (var i = 0; i < lines.length; i++) {
+                var line = lines[i];
+                var fm = /^[ \t]{0,3}(`{3,}|~{3,})[ \t]*$/.exec(line);
+                if (fence) {
+                    if (
+                        fm &&
+                        fm[1].charAt(0) === fence.charAt(0) &&
+                        fm[1].length >= fence.length
+                    )
+                        fence = null;
+                    out.push(put(line));
+                    continue;
+                }
+                if (fm) {
+                    fence = fm[1];
+                    out.push(put(line));
+                    continue;
+                }
+                /* Inline code spans on the line (pairs only; a lone
+                   backtick is ordinary text). Multi-line spans degrade to
+                   "partially protected" — cosmetic, not correctness. */
+                out.push(
+                    line.replace(/(`+)([\s\S]*?)\1/g, function (m) {
+                        return put(m);
+                    }),
+                );
+            }
+            return { text: out.join("\n"), stash: stash };
+        },
+
+        unmaskCode: function (text, stash) {
+            return String(text).replace(
+                /\u0000M(\d+)\u0000/g,
+                function (m, n) {
+                    var v = stash[Number(n)];
+                    return v == null ? m : v;
+                },
+            );
+        },
+
+        /* Collapse blank runs left behind by removals (an image alone on
+           a line, a stripped video block, …). */
+        tidyBlank: function (text) {
+            return text.replace(/\n{3,}/g, "\n\n");
+        },
+
+        normLabel: function (l) {
+            return String(l).trim().replace(/\s+/g, " ").toLowerCase();
+        },
+
+        /* -------------------------- strip pass -------------------------- */
+
+        stripMedia: function (md) {
+            var masked = MediaTools.maskCode(md);
+            var s = masked.text;
+
+            /* Reference definitions present in the document (CommonMark
+               label matching: case-insensitive, whitespace-collapsed). */
+            var defined = Object.create(null);
+            s.replace(
+                /^[ \t]{0,3}\[([^\]]+)\]:[ \t]*/gm,
+                function (m, label) {
+                    defined[MediaTools.normLabel(label)] = true;
+                    return m;
+                },
+            );
+
+            /* Labels referenced by image constructs — full refs always;
+               shorthand refs only when a definition resolves them (a bare
+               literal "![word]" with no definition is text, not media). */
+            var imgLabels = Object.create(null);
+            s.replace(/!\[[^\]]*\]\[([^\]]*)\]/g, function (m, label) {
+                imgLabels[MediaTools.normLabel(label)] = true;
+                return m;
+            });
+            s.replace(/!\[([^\]]*)\](?![\[(])/g, function (m, label) {
+                if (defined[MediaTools.normLabel(label)])
+                    imgLabels[MediaTools.normLabel(label)] = true;
+                return m;
+            });
+
+            /* Linked images (the badge pattern): the whole link goes. */
+            s = s.replace(/\[\s*!\[[^\]]*\]\([^()]*\)\s*\]\s*\([^()]*\)/g, "");
+            s = s.replace(/\[\s*!\[[^\]]*\]\[[^\]]*\]\s*\]\s*\([^()]*\)/g, "");
+
+            /* Inline images: <url> form first, then bare-url form. */
+            s = s.replace(/!\[[^\]]*\]\(\s*<[^<>]*>[^()]*\)/g, "");
+            s = s.replace(/!\[[^\]]*\]\([^()]*\)/g, "");
+
+            /* Full-reference images, then shorthand images that a
+               definition actually resolves — a literal "![word]" with no
+               definition is text and stays. */
+            s = s.replace(/!\[[^\]]*\]\[[^\]]*\]/g, "");
+            s = s.replace(/!\[([^\]]*)\](?![\[(])/g, function (m, label) {
+                return imgLabels[MediaTools.normLabel(label)] ? "" : m;
+            });
+
+            /* Raw HTML media: paired containers with their content, then
+               any leftover tags (void img/source/track, self-closing). */
+            s = s.replace(
+                /<(video|audio|picture)\b[^>]*>[\s\S]*?<\/\1\s*>/gi,
+                "",
+            );
+            s = s.replace(/<\/?(?:video|audio|picture)\b[^>]*\/?>/gi, "");
+            s = s.replace(/<(?:img|source|track)\b[^>]*\/?>/gi, "");
+
+            /* Reference definitions used only by images. Remaining link
+               usage (full "[text][ref]" and shorthand "[text]") keeps a
+               definition alive even if an image shared the label. */
+            var linkLabels = Object.create(null);
+            s.replace(/\[[^\]]+\]\[([^\]]*)\]/g, function (m, label) {
+                linkLabels[MediaTools.normLabel(label)] = true;
+                return m;
+            });
+            s.replace(/(^|\s)\[([^\]]+)\](?![\[(])(?!\s*:)/g, function (m, pre, label) {
+                linkLabels[MediaTools.normLabel(label)] = true;
+                return m;
+            });
+            s = s.replace(
+                /^[ \t]{0,3}\[([^\]]+)\]:[ \t]*<?([^\s>]*)>?(?:[ \t]+(?:"[^"]*"|'[^']*'|\([^)]*\)))?[ \t]*$/gm,
+                function (m, label) {
+                    return linkLabels[MediaTools.normLabel(label)] ||
+                        !imgLabels[MediaTools.normLabel(label)]
+                        ? m
+                        : "";
+                },
+            );
+
+            return MediaTools.tidyBlank(
+                MediaTools.unmaskCode(s, masked.stash),
+            );
+        },
+
+        /* -------------------------- embed pass -------------------------- */
+
+        embedImages: function (md) {
+            var masked = MediaTools.maskCode(md);
+            var s = masked.text;
+            var jobs = []; /* { start, end, url, build(uri)->string } */
+            var cache = Object.create(null); /* url -> Promise<uri|null> */
+
+            var addJob = function (start, end, url, build) {
+                jobs.push({ start: start, end: end, url: url, build: build });
+            };
+            var offset = function (args) {
+                return args[args.length - 2];
+            };
+
+            /* Inline images, angle-url form: ![alt](<url> "title") */
+            s.replace(
+                /!\[([^\]]*)\]\(\s*<([^<>]*)>(\s+(?:"([^"]*)"|'([^']*)'))?\s*\)/g,
+                function () {
+                    var a = Array.prototype.slice.call(arguments, 0, -2);
+                    var m = a[0];
+                    var off = offset(arguments);
+                    addJob(off, off + m.length, a[2], function (uri) {
+                        var t = a[4] != null ? a[4] : a[5];
+                        return (
+                            "![" + a[1] + "](" + uri +
+                            (t ? ' "' + t + '"' : "") + ")"
+                        );
+                    });
+                    return m;
+                },
+            );
+
+            /* Inline images, bare-url form: ![alt](url "title") */
+            s.replace(
+                /!\[([^\]]*)\]\(\s*([^()\s]+)(\s+(?:"([^"]*)"|'([^']*)'))?\s*\)/g,
+                function () {
+                    var a = Array.prototype.slice.call(arguments, 0, -2);
+                    var m = a[0];
+                    var off = offset(arguments);
+                    if (/^data:/i.test(a[2])) return m; /* already embedded */
+                    addJob(off, off + m.length, a[2], function (uri) {
+                        var t = a[4] != null ? a[4] : a[5];
+                        return (
+                            "![" + a[1] + "](" + uri +
+                            (t ? ' "' + t + '"' : "") + ")"
+                        );
+                    });
+                    return m;
+                },
+            );
+
+            /* <img src="…"> (and source-less forms are left alone). The
+               job covers only the url token; the rest of the tag survives. */
+            s.replace(
+                /(<img\b[^>]*?\bsrc\s*=\s*)(?:"([^"]*)"|'([^']*)'|([^\s>]+))/gi,
+                function () {
+                    var a = Array.prototype.slice.call(arguments, 0, -2);
+                    var m = a[0];
+                    var off = offset(arguments);
+                    var url = a[2] != null ? a[2] : a[3] != null ? a[3] : a[4];
+                    if (!url || !/^https?:\/\//i.test(url)) return m;
+                    var pre = a[1];
+                    var quote = a[2] != null ? '"' : a[3] != null ? "'" : "";
+                    addJob(
+                        off + pre.length,
+                        off + m.length,
+                        url,
+                        function (uri) {
+                            return pre + quote + uri + quote;
+                        },
+                    );
+                    return m;
+                },
+            );
+
+            /* Reference definitions that images resolve through. */
+            var imgLabels = Object.create(null);
+            s.replace(/!\[[^\]]*\]\[([^\]]*)\]/g, function (m, label) {
+                imgLabels[MediaTools.normLabel(label)] = true;
+                return m;
+            });
+            s.replace(/!\[([^\]]*)\](?![\[(])/g, function (m, label) {
+                imgLabels[MediaTools.normLabel(label)] = true;
+                return m;
+            });
+            s.replace(
+                /^[ \t]{0,3}\[([^\]]+)\]:[ \t]*<?([^\s>]*)>?(?:[ \t]+(?:"[^"]*"|'[^']*'|\([^)]*\)))?[ \t]*$/gm,
+                function (m, label, url, off) {
+                    if (
+                        !imgLabels[MediaTools.normLabel(label)] ||
+                        !/^https?:\/\//i.test(url)
+                    )
+                        return m;
+                    var at = m.indexOf(url);
+                    if (at === -1) return m;
+                    addJob(
+                        off + at,
+                        off + at + url.length,
+                        url,
+                        function (uri) {
+                            return m.slice(0, at) + uri + m.slice(at + url.length);
+                        },
+                    );
+                    return m;
+                },
+            );
+
+            if (!jobs.length) {
+                return Promise.resolve(
+                    MediaTools.unmaskCode(s, masked.stash),
+                );
+            }
+
+            /* Unique job urls, then fetch them through a small pool — the
+               cache is primed HERE (not from it) so the replacement pass
+               below always finds settled values. */
+            var seen = Object.create(null);
+            var urls = [];
+            for (var i = 0; i < jobs.length; i++) {
+                var u = jobs[i].url;
+                if (u && !seen[u]) {
+                    seen[u] = true;
+                    urls.push(u);
+                }
+            }
+            return MediaTools.mapPool(
+                urls,
+                function (u) {
+                    if (!(u in cache)) cache[u] = MediaTools.toDataUri(u);
+                    /* Replace the cached promise with its settled value so
+                       the synchronous replacement pass below can read it. */
+                    return Promise.resolve(cache[u]).then(function (v) {
+                        cache[u] = v;
+                        return v;
+                    });
+                },
+                5,
+            ).then(function () {
+                var out = s;
+                jobs.sort(function (a, b) {
+                    return b.start - a.start;
+                });
+                for (var i = 0; i < jobs.length; i++) {
+                    var j = jobs[i];
+                    var uri = j.url ? cache[j.url] : null;
+                    if (!uri) continue; /* fetch/type failure keeps the url */
+                    out =
+                        out.slice(0, j.start) + j.build(uri) + out.slice(j.end);
+                }
+                return MediaTools.tidyBlank(
+                    MediaTools.unmaskCode(out, masked.stash),
+                );
+            });
+        },
+
+        /* Fetch one image and wrap it as a data uri. Any failure — no
+           fetch, network error, non-2xx, non-image payload, oversized —
+           resolves to null so the caller keeps the original url. */
+        toDataUri: function (url) {
+            var doFetch =
+                typeof window.fetch === "function" ? window.fetch : null;
+            if (!doFetch || !/^https?:\/\//i.test(url))
+                return Promise.resolve(null);
+            var p;
+            try {
+                p = doFetch(url, { credentials: "omit" });
+            } catch (e) {
+                return Promise.resolve(null);
+            }
+            return Promise.resolve(p)
+                .then(function (res) {
+                    if (!res || !res.ok) return null;
+                    var ct =
+                        res.headers && res.headers.get
+                            ? res.headers.get("content-type") || ""
+                            : "";
+                    if (!res.arrayBuffer) return null;
+                    return Promise.resolve(res.arrayBuffer()).then(function (
+                        buf,
+                    ) {
+                        if (!buf || buf.byteLength > MediaTools.EMBED_MAX_BYTES)
+                            return null;
+                        var bytes = new Uint8Array(buf);
+                        var mime = MediaTools.resolveMime(ct, bytes);
+                        if (!mime) return null;
+                        return (
+                            "data:" + mime + ";base64," +
+                            MediaTools.bytesToBase64(bytes)
+                        );
+                    });
+                })
+                .catch(function () {
+                    return null;
+                });
+        },
+
+        /* Content-type first; when it is missing or generic (octet-stream
+           and friends), sniff the magic bytes. A server that answers
+           "text/html" is not an image, no matter what the bytes show. */
+        resolveMime: function (ct, bytes) {
+            ct = String(ct || "").split(";")[0].trim().toLowerCase();
+            if (ct.indexOf("image/") === 0) return ct;
+            var generic =
+                !ct ||
+                ct === "application/octet-stream" ||
+                ct === "application/binary" ||
+                ct === "application/unknown";
+            if (!generic) return null;
+            return MediaTools.sniffImage(bytes);
+        },
+
+        sniffImage: function (b) {
+            if (!b || b.length < 12) return null;
+            if (
+                b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47
+            )
+                return "image/png";
+            if (b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff)
+                return "image/jpeg";
+            if (b[0] === 0x47 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x38)
+                return "image/gif";
+            if (
+                b[0] === 0x52 && b[1] === 0x49 && b[2] === 0x46 &&
+                b[3] === 0x46 && b[8] === 0x57 && b[9] === 0x45 &&
+                b[10] === 0x42 && b[11] === 0x50
+            )
+                return "image/webp";
+            if (b[0] === 0x42 && b[1] === 0x4d) return "image/bmp";
+            if (b[0] === 0 && b[1] === 0 && b[2] === 1 && b[3] === 0)
+                return "image/x-icon";
+            return null;
+        },
+
+        bytesToBase64: function (bytes) {
+            var CHUNK = 0x8000;
+            var out = [];
+            for (var i = 0; i < bytes.length; i += CHUNK) {
+                out.push(
+                    String.fromCharCode.apply(
+                        null,
+                        bytes.subarray(i, i + CHUNK),
+                    ),
+                );
+            }
+            return btoa(out.join(""));
+        },
+
+        /* Small worker pool so a document with many images neither
+           floods the network stack nor serialises painfully. */
+        mapPool: function (items, worker, limit) {
+            var results = new Array(items.length);
+            var i = 0;
+            var next = function () {
+                if (i >= items.length) return Promise.resolve();
+                var idx = i++;
+                return Promise.resolve()
+                    .then(function () {
+                        return worker(items[idx], idx);
+                    })
+                    .then(function (r) {
+                        results[idx] = r;
+                        return next();
+                    });
+            };
+            var starters = [];
+            for (var s = 0; s < Math.min(limit || 4, items.length); s++)
+                starters.push(next());
+            return Promise.all(starters).then(function () {
+                return results;
+            });
         },
     };
 
@@ -2843,6 +3354,7 @@
                 Settings.applyAll();
                 Settings.watchSystem();
                 App.syncSettingsUi();
+                App.syncEmbedUi();
                 Find.init();
                 Palette.init();
                 Help.init();
@@ -2850,6 +3362,7 @@
                 OpenUrl.init();
                 Lightbox.init();
                 App.purgeLegacyStrictPrefs();
+                MediaTools.init();
                 Source.loadLast();
 
                 var embedded = App.readEmbedded();
@@ -3154,6 +3667,113 @@
             );
         },
 
+        /* "Fetch & embed remote media" (1.8.1): a global import behaviour,
+           persisted app-wide (not per document) and applied the next time
+           content arrives from a file, a url or the clipboard. */
+        syncEmbedUi: function () {
+            var item = $("mi-embed");
+            if (item)
+                item.setAttribute(
+                    "aria-checked",
+                    MediaTools.enabled ? "true" : "false",
+                );
+        },
+
+        toggleEmbedMedia: function () {
+            MediaTools.setEnabled(!MediaTools.enabled);
+            App.syncEmbedUi();
+            UI.toast(
+                MediaTools.enabled
+                    ? "Remote media will be fetched and embedded when importing"
+                    : "Remote media will be removed when importing",
+            );
+        },
+
+        /* ------------------ paste from clipboard (1.8.1) ------------------- */
+
+        /* Best-practice read: prefer the async clipboard items API so the
+           payload's types can be inspected (a copied image, file or
+           spreadsheet is NOT text and must say so); fall back to
+           readText() where the items API is missing. Never throws. */
+        pasteFromClipboard: function () {
+            var fail = function (msg) {
+                UI.toast(msg, true);
+            };
+            var board = navigator.clipboard || null;
+            if (
+                !board ||
+                (typeof board.read !== "function" &&
+                    typeof board.readText !== "function")
+            ) {
+                fail("Pasting isn't available in this browser");
+                return;
+            }
+            var reading;
+            if (typeof board.read === "function") {
+                reading = Promise.resolve(board.read()).then(function (
+                    items,
+                ) {
+                    var list = items || [];
+                    for (var i = 0; i < list.length; i++) {
+                        var types =
+                            list[i] && list[i].types ? list[i].types : [];
+                        if (types.indexOf("text/plain") !== -1) {
+                            return Promise.resolve(
+                                list[i].getType("text/plain"),
+                            ).then(function (blob) {
+                                return blob && blob.text
+                                    ? blob.text()
+                                    : String(blob);
+                            });
+                        }
+                    }
+                    var err = new Error("clipboard has no text/plain item");
+                    err.notText = true;
+                    throw err;
+                });
+            } else {
+                reading = Promise.resolve(board.readText());
+            }
+            reading.then(
+                function (text) {
+                    text = text == null ? "" : String(text);
+                    if (!text.trim()) {
+                        fail("The clipboard is empty");
+                        return;
+                    }
+                    App.importPasted(text);
+                },
+                function (err) {
+                    if (err && err.notText) {
+                        fail(
+                            "The clipboard doesn't hold any text — copy the Markdown source and try again",
+                        );
+                    } else if (
+                        err &&
+                        (err.name === "NotAllowedError" ||
+                            err.name === "SecurityError")
+                    ) {
+                        fail(
+                            "Clipboard access was denied — allow it and try again",
+                        );
+                    } else {
+                        fail(
+                            "Couldn't read the clipboard — copy the text and try again",
+                        );
+                    }
+                },
+            );
+        },
+
+        /* Clipboard text confirmed as text: run the media pre-render pass,
+           then render. loadDocument's own toast is the success message. */
+        importPasted: function (text) {
+            App.pendingFile = null; /* clipboard content has no file provenance */
+            MediaTools.prepare(text).then(function (prepared) {
+                App.loadDocument(prepared, "pasted");
+            });
+        },
+
         /* One-time cleanup: the per-document raw-HTML override was removed
            with its doc-menu control — leftover state is deleted, not kept
            hidden (remove, don't hide). */
@@ -3236,6 +3856,7 @@
             else {
                 App.syncToolbar();
                 App.syncPubMenuUi();
+                App.syncEmbedUi();
                 App.openPopover(App.dom.docMenu, App.dom.btnDocs);
             }
         },
@@ -3337,6 +3958,10 @@
                 App.closePopovers();
                 OpenUrl.openEditor();
             });
+            bindMenuItem("mi-paste", function () {
+                App.closePopovers();
+                App.pasteFromClipboard();
+            });
             bindMenuItem("mi-meta", function () {
                 App.closePopovers();
                 Meta.openEditor();
@@ -3372,6 +3997,9 @@
             });
             bindMenuItem("mi-pubmenu", function () {
                 App.togglePubMenu();
+            });
+            bindMenuItem("mi-embed", function () {
+                App.toggleEmbedMedia();
             });
 
             /* Compact more-menu (search + customisation collapse here) and
@@ -3782,8 +4410,13 @@
                 }
                 var text =
                     e.dataTransfer && e.dataTransfer.getData("text/plain");
-                if (text && text.trim())
-                    App.loadDocument(text, "pasted");
+                if (text && text.trim()) {
+                    /* Dragged text rides the same media pass as the
+                       clipboard — it carries the same payload (1.8.1). */
+                    MediaTools.prepare(text).then(function (prepared) {
+                        App.loadDocument(prepared, "pasted");
+                    });
+                }
             });
 
             /* Import: paste while the empty state is showing was removed
@@ -3841,7 +4474,12 @@
                         );
                         return;
                     }
-                    App.loadDocument(text, "imported");
+                    /* Media pre-render pass (1.8.1): local files go through
+                       the same strip/embed decision as url and clipboard
+                       imports. prepare() never rejects. */
+                    MediaTools.prepare(text).then(function (prepared) {
+                        App.loadDocument(prepared, "imported");
+                    });
                 },
                 function () {
                     UI.toast("Could not read that file", true);
@@ -4058,6 +4696,44 @@
         },
         downloadLabel: function () {
             return Exporter.downloadLabel();
+        },
+        media: {
+            /* Harness/console hook: the load-time media pipeline (1.8.1). */
+            prepare: function (md) {
+                return MediaTools.prepare(md);
+            },
+            strip: function (md) {
+                return MediaTools.stripMedia(md);
+            },
+            embed: function (md) {
+                return MediaTools.embedImages(md);
+            },
+            enabled: function () {
+                return MediaTools.enabled;
+            },
+            setEnabled: function (v) {
+                MediaTools.setEnabled(!!v);
+                App.syncEmbedUi();
+                return MediaTools.enabled;
+            },
+            state: function () {
+                return MediaTools.state();
+            },
+        },
+        clipboard: {
+            paste: function () {
+                App.pasteFromClipboard();
+            },
+            state: function () {
+                var board = navigator.clipboard || null;
+                return {
+                    supported: !!(
+                        board &&
+                        (typeof board.read === "function" ||
+                            typeof board.readText === "function")
+                    ),
+                };
+            },
         },
         purgeLegacyPrefs: function () {
             App.purgeLegacyStrictPrefs();

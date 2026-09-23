@@ -9,7 +9,7 @@
         <meta name="color-scheme" content="light dark" />
         <meta
             name="description"
-            content="A portable, self-contained Markdown reading environment. Open a .md file, drag and drop, or fetch one from a url — no server, no account."
+            content="A portable, self-contained Markdown reading environment. Open a .md file, paste from the clipboard, drag and drop, or fetch one from a url — no server, no account."
         />
         <title>Markdown Webbook</title>
         <link
@@ -258,9 +258,9 @@
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
                 Open from url…
             </button>
-            <button class="menu-item" id="mi-meta" role="menuitem" type="button">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="8" y1="13" x2="16" y2="13"></line><line x1="8" y1="17" x2="13" y2="17"></line></svg>
-                Edit HTML metadata
+            <button class="menu-item" id="mi-paste" role="menuitem" type="button">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path></svg>
+                Paste from clipboard
             </button>
             <hr class="menu-sep" />
             <div class="menu-label">Export</div>
@@ -289,6 +289,16 @@
                 Print / save as PDF
             </button>
             <hr class="menu-sep" />
+            <button class="menu-item" id="mi-meta" role="menuitem" type="button">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="8" y1="13" x2="16" y2="13"></line><line x1="8" y1="17" x2="13" y2="17"></line></svg>
+                Edit HTML metadata
+            </button>
+            <hr class="menu-sep" />
+            <button class="menu-item" id="mi-embed" role="menuitemcheckbox" aria-checked="false" type="button">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
+                <span class="mi-label">Fetch &amp; embed remote media</span>
+                <span class="pub-switch" aria-hidden="true"><span class="pub-knob"></span></span>
+            </button>
             <button class="menu-item" id="mi-pubmenu" role="menuitemcheckbox" aria-checked="true" type="button">
                 <svg viewBox="0 0 24 24" aria-hidden="true"><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="12" x2="15" y2="12"></line><line x1="3" y1="18" x2="18" y2="18"></line></svg>
                 <span class="mi-label">Include document menu in publication</span>
@@ -397,8 +407,8 @@
                 </div>
                 <h1 class="empty-title">A quiet place to read Markdown</h1>
                 <p class="empty-sub">
-                    Open a file, drag &amp; drop it anywhere on this page, or
-                    fetch one from a url to begin.
+                    Open a file, paste from your clipboard, drag &amp; drop it
+                    anywhere on this page, or fetch one from a url to begin.
                 </p>
                 <button id="btn-open-empty" type="button" class="btn-primary">
                     Open a Markdown file

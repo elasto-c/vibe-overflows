@@ -1103,8 +1103,9 @@ setTimeout(() => {
       (b) => b.id,
     );
     const expected = [
-      "mi-open", "mi-open-url", "mi-meta", "mi-copy-md", "mi-copy-text",
-      "mi-download", "mi-export", "mi-publish", "mi-print", "mi-pubmenu",
+      "mi-open", "mi-open-url", "mi-paste", "mi-copy-md", "mi-copy-text",
+      "mi-download", "mi-export", "mi-publish", "mi-print", "mi-meta",
+      "mi-embed", "mi-pubmenu",
     ];
     const same =
       ids.length === expected.length &&
@@ -1151,7 +1152,7 @@ setTimeout(() => {
       /<div id="mf-desc" class="meta-edit" contenteditable="true"/.test(html);
     const btn38 = /\.mbtn\s*{[^}]*height:\s*38px/.test(html);
     const save = /\.mbtn\.primary\s*{[^}]*background:\s*var\(--text-color\)[^}]*color:\s*var\(--bg-color\)/.test(html);
-    const label = /#mi-pubmenu \.mi-label\s*{[^}]*color:\s*var\(--text-color\)/.test(html);
+    const label = /#mi-embed \.mi-label,\s*#mi-pubmenu \.mi-label\s*{[^}]*color:\s*var\(--text-color\)/.test(html);
     return token && row38 && sub && edit && btn38 && save && label
       ? ok() : bad("token=" + token + " row=" + row38 + " sub=" + sub +
                    " edit=" + edit + " btn=" + btn38 + " save=" + save +
@@ -1426,6 +1427,230 @@ setTimeout(() => {
       ? ok() : bad("html=" + htmlGuard + " bin=" + binGuard +
                    " toast=" + toastText());
   });
+  /* ------- v1.8.1: paste from clipboard + remote media pipeline ------- */
+  check("M01", "menu: paste + embed placements, meta below print, toggle off", () => {
+    const menu = doc.getElementById("doc-menu");
+    const openUrl = doc.getElementById("mi-open-url");
+    const paste = doc.getElementById("mi-paste");
+    const print = doc.getElementById("mi-print");
+    const meta = doc.getElementById("mi-meta");
+    const embed = doc.getElementById("mi-embed");
+    const pub = doc.getElementById("mi-pubmenu");
+    /* Paste sits directly under Open from url… with the first separator
+       right beneath it (spec: below Open from url…, above the menu-sep). */
+    const pasteOk = openUrl.nextElementSibling === paste &&
+      /Paste from clipboard/.test(paste.textContent) &&
+      paste.nextElementSibling && paste.nextElementSibling.tagName === "HR";
+    /* Edit HTML metadata moved under Print / save as PDF with its own
+       separator between them. */
+    const metaOk = print.nextElementSibling &&
+      print.nextElementSibling.tagName === "HR" &&
+      print.nextElementSibling.nextElementSibling === meta;
+    /* The embed toggle is the next group: separator → embed → pubmenu,
+       a checkbox switch, default off, sharing the pub-switch visuals. */
+    const sep = meta.nextElementSibling;
+    const embedOk = sep && sep.tagName === "HR" && sep.nextElementSibling === embed &&
+      embed.nextElementSibling === pub &&
+      embed.getAttribute("aria-checked") === "false" &&
+      /Fetch & embed remote media/.test(embed.textContent) &&
+      !!embed.querySelector(".pub-switch .pub-knob") &&
+      !!embed.querySelector(".mi-label");
+    const css = /#mi-embed \.mi-label,\s*#mi-pubmenu \.mi-label\s*{/.test(html);
+    return pasteOk && metaOk && embedOk && css
+      ? ok() : bad("paste=" + pasteOk + " meta=" + metaOk +
+                   " embed=" + embedOk + " css=" + css);
+  });
+  check("M02", "embed toggle: flips, persists, toasts, syncs the switch", () => {
+    W.openMarkdown("# M02\n\ntext");
+    const item = doc.getElementById("mi-embed");
+    item.click();
+    const on = item.getAttribute("aria-checked") === "true" &&
+      W.media.enabled() === true &&
+      window.localStorage.getItem("mdwb:embedMedia") === "true";
+    const t1 = toastText();
+    item.click();
+    const off = item.getAttribute("aria-checked") === "false" &&
+      W.media.enabled() === false &&
+      window.localStorage.getItem("mdwb:embedMedia") === "false";
+    return on && off && /remote media/i.test(t1)
+      ? ok(t1) : bad("on=" + on + " off=" + off + " toast=" + t1);
+  });
+  check("M03", "strip pass: media gone, text/links/code untouched", () => {
+    W.media.setEnabled(false);
+    const src = [
+      "# Doc", "",
+      "Hello ![one](https://x/1.png) world", "",
+      "[![badge](https://x/b.svg)](https://repo/proj)", "",
+      "![r][pic]", "",
+      "[pic]: https://x/pic.png \"P\"", "",
+      "![solo]", "",
+      "[solo]: https://x/solo.png", "",
+      "A ![ghost] stays.", "",
+      "<video controls><source src=\"https://x/v.mp4\"><track src=\"https://x/t.vtt\">fallback text</video>", "",
+      "<audio src=\"https://x/a.mp3\"></audio>", "",
+      "<img src=\"https://x/i.jpg\" alt=\"pic\">", "",
+      "Keep [a link](https://ok/page) and a [ref link][lnk].", "",
+      "[lnk]: https://ok/lnk-target", "",
+      "```", "![keep](https://x/kept.png)", "```", "",
+      "Tail after code.",
+    ].join("\n");
+    const out = W.media.strip(src);
+    const gone = ["1.png", "b.svg", "repo/proj", "pic.png", "solo.png",
+      "v.mp4", "t.vtt", "a.mp3", "i.jpg", "fallback text", "<video",
+      "<audio", "<img", "[pic]:", "[solo]:"]
+      .every((frag) => out.indexOf(frag) === -1);
+    const kept = ["Hello", "world", "![ghost] stays", "a link",
+      "https://ok/page", "ref link", "https://ok/lnk-target", "[lnk]:",
+      "![keep](https://x/kept.png)", "Tail after code", "# Doc"]
+      .every((frag) => out.indexOf(frag) !== -1);
+    return gone && kept
+      ? ok() : bad("gone=" + gone + " kept=" + kept + " out=" + out.slice(0, 400));
+  });
+  check("M09", "sanitiser: data:image survives, other data: schemes stay blocked", () => {
+    const o = R(
+      '![px](data:image/png;base64,iVBORw0KGgoAAAANSUhEUg) and [x](data:text/html,evil)',
+    );
+    const d = parse(o);
+    const img = d.querySelector("img");
+    const a = d.querySelector("a");
+    const imgOk = img &&
+      (img.getAttribute("src") || "").indexOf("data:image/png;base64,") === 0;
+    const linkSafe = a && !a.getAttribute("href");
+    return imgOk && linkSafe
+      ? ok() : bad("img=" + imgOk + " href=" + (a ? a.getAttribute("href") : "none"));
+  });
+  checkA("M04", "embed pass: image urls become data uris; failures keep urls", async (Wl) => {
+    Wl.media.setEnabled(true);
+    const png = new Uint8Array([
+      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0,
+    ]);
+    const resp = (buf, ct) => ({
+      ok: true, status: 200, statusText: "OK",
+      headers: { get: (k) => (/content-type/i.test(k) ? ct : null) },
+      arrayBuffer: () => Promise.resolve(buf),
+    });
+    window.fetch = (u) => {
+      if (/fail/.test(u)) return Promise.reject(new TypeError("network down"));
+      if (/nope/.test(u)) return Promise.resolve(resp(new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]), "text/html"));
+      return Promise.resolve(resp(png, "image/png"));
+    };
+    const src = [
+      "# M", "",
+      "![a](https://img/one.png)", "",
+      "![b][p2]", "",
+      "[p2]: https://img/two.png \"T\"", "",
+      "<img src=\"https://img/three.png\" alt=\"c\">", "",
+      "![bad](https://img/fail.png)", "",
+      "![bin](https://img/nope.png)",
+    ].join("\n");
+    const out = await Wl.media.prepare(src);
+    const uris = out.match(/data:image\/png;base64,/g) || [];
+    const okEmbed = uris.length === 3 &&
+      out.indexOf("![a](data:image/png;base64,") !== -1 &&
+      out.indexOf("[p2]: data:image/png;base64,") !== -1 &&
+      out.indexOf("\"T\"") !== -1 &&
+      out.indexOf('src="data:image/png;base64,') !== -1 &&
+      out.indexOf("![bad](https://img/fail.png)") !== -1 &&
+      out.indexOf("![bin](https://img/nope.png)") !== -1;
+    /* A generic content-type falls back to magic-byte sniffing. */
+    window.fetch = () => Promise.resolve(resp(png, "application/octet-stream"));
+    const out2 = await Wl.media.prepare("![s](https://img/four.png)");
+    const sniffed = out2.indexOf("![s](data:image/png;base64,") === 0;
+    Wl.media.setEnabled(false);
+    return okEmbed && sniffed
+      ? ok("uris=" + uris.length)
+      : bad("embed=" + okEmbed + " sniff=" + sniffed + " out=" + out.slice(0, 300));
+  });
+  checkA("M05", "clipboard paste: text renders, media pass runs, success toast", async (Wl) => {
+    Wl.openMarkdown("# Seed\n\nbefore paste");
+    window.navigator.clipboard = {
+      read: () => Promise.resolve([
+        {
+          types: ["text/plain"],
+          getType: () => Promise.resolve(new window.Blob(
+            ["# Pasted Doc\n\nHello ![x](https://img/gone.png)"],
+            { type: "text/plain" })),
+        },
+      ]),
+    };
+    Wl.clipboard.paste();
+    await drain();
+    const txt = doc.getElementById("content").textContent;
+    const rendered = txt.indexOf("Pasted Doc") !== -1;
+    const stripped = txt.indexOf("gone.png") === -1 &&
+      !doc.querySelector("#content img");
+    const toasted = toastText().indexOf("Pasted Doc") !== -1;
+    return rendered && stripped && toasted
+      ? ok(toastText())
+      : bad("render=" + rendered + " strip=" + stripped + " toast=" + toastText());
+  });
+  checkA("M06", "clipboard guards: non-text, empty and denied all toast errors", async (Wl) => {
+    Wl.openMarkdown("# Seed\n\nstable");
+    const before = doc.getElementById("content").textContent;
+    window.navigator.clipboard = {
+      read: () => Promise.resolve([{ types: ["image/png"] }]),
+    };
+    Wl.clipboard.paste();
+    await drain();
+    const nonText = toastText();
+    window.navigator.clipboard = {
+      read: () => Promise.resolve([{
+        types: ["text/plain"],
+        getType: () => Promise.resolve(new window.Blob(["   "], { type: "text/plain" })),
+      }]),
+    };
+    Wl.clipboard.paste();
+    await drain();
+    const empty = toastText();
+    const deniedErr = new Error("denied");
+    deniedErr.name = "NotAllowedError";
+    window.navigator.clipboard = { read: () => Promise.reject(deniedErr) };
+    Wl.clipboard.paste();
+    await drain();
+    const denied = toastText();
+    const untouched = doc.getElementById("content").textContent === before;
+    const all = /any text/.test(nonText) && /empty/i.test(empty) &&
+      /denied/i.test(denied) && untouched;
+    return all
+      ? ok(nonText + " | " + empty + " | " + denied)
+      : bad("nontext=" + nonText + " empty=" + empty + " denied=" + denied +
+            " untouched=" + untouched);
+  });
+  checkA("M08", "url import runs the media pass: stripped by default", async (Wl) => {
+    Wl.openMarkdown("# Seed\n\nx");
+    window.fetch = () => Promise.resolve(
+      UrlStubs.md("# Remote\n\n![pic](https://img/stripped.png)\n"),
+    );
+    Wl.openUrlDialog.submit("https://example.com/media.md");
+    await drain();
+    const st = Wl.openUrlDialog.state();
+    const txt = doc.getElementById("content").textContent;
+    const noImg = !doc.querySelector("#content img");
+    return !st.open && !st.busy && txt.indexOf("Remote") !== -1 && noImg
+      ? ok() : bad("open=" + st.open + " busy=" + st.busy +
+                   " img=" + !noImg + " txt=" + txt.slice(0, 60));
+  });
+  check("M07", "publication: new authoring items excluded, seps prune cleanly", () => {
+    W.openMarkdown("# M07\n\nbody");
+    const out = W.publication.build();
+    const d = parse(out);
+    const gone = ["mi-open", "mi-open-url", "mi-paste", "mi-meta",
+      "mi-publish", "mi-embed", "mi-pubmenu"]
+      .every((id) => !d.getElementById(id));
+    const menu = d.getElementById("doc-menu");
+    const kids = Array.prototype.map.call(menu.children, (el) => el);
+    const noDangling = kids[0].tagName !== "HR" &&
+      kids[kids.length - 1].tagName !== "HR";
+    let adjacent = false;
+    for (let i = 1; i < kids.length; i++)
+      if (kids[i].tagName === "HR" && kids[i - 1].tagName === "HR") adjacent = true;
+    const kept = ["mi-copy-md", "mi-copy-text", "mi-download", "mi-export",
+      "mi-print"].every((id) => !!d.getElementById(id));
+    return gone && noDangling && !adjacent && kept
+      ? ok("items=" + kids.length)
+      : bad("gone=" + gone + " dang=" + noDangling + " adj=" + adjacent +
+            " kept=" + kept);
+  });
   check("PUB1", "publishable export: 1:1 replica with metadata in head", () => {
     W.openMarkdown("# T\n\nbody text");
     const out = W.publication.build();
@@ -1466,8 +1691,8 @@ setTimeout(() => {
     const off = d2.getElementById("btn-docs").hidden === true &&
       d2.getElementById("doc-menu").hidden === true;
     /* Always excluded: removed from the doc-menu in both variants. */
-    const excludedGone = ["mi-open", "mi-open-url", "mi-meta", "mi-publish",
-      "mi-pubmenu"]
+    const excludedGone = ["mi-open", "mi-open-url", "mi-paste", "mi-meta",
+      "mi-publish", "mi-embed", "mi-pubmenu"]
       .every((id) => !d1.getElementById(id) && !d2.getElementById(id));
     /* Everything else is 1:1: the export group stays intact. */
     const kept = ["mi-copy-md", "mi-copy-text", "mi-download", "mi-export",
@@ -1673,6 +1898,7 @@ setTimeout(() => {
   console.log("v1.6.0 additions (replica publication): exact 1:1 published replica with authoring exclusions + MDWB_PUB listener suppression, conditional doc-menu visibility, rawHtml scroll pin, iOS grouped-list metadata editor, fixed menu measure + blue toggle label");
   console.log("v1.7.0 additions (polish): meta-panel spacing/size/colour pass (38px rows, 88px plain-text Description editor, inverted solid Save, space-6 subtext), plain-text publication toggle label, code line numbers + per-block COLLAPSE with fading 88px window, table column floors/caps with hidden-bar drag-to-scroll");
   console.log("v1.8.0 additions: Open-from-url import (meta-panel modal, loading state, http(s)+extension validation, HTML/binary guards, toasts on failure only, always excluded from publications), .mdx imports with preserved download naming + dynamic Download label, toc/findbar mutual exclusion, btn-top below the toc drawer, welcome-paste removal");
+  console.log("v1.8.1 additions: Paste from clipboard (doc-menu item, text/type inspection with error toasts, success toast via render) and the Fetch & embed remote media switch (default off; off strips media constructs at import, on rewrites image urls to sanitiser-allowed data uris), both load-path wired (file/url/clipboard/drag) and excluded from publications; Edit HTML metadata regrouped under Print / save as PDF");
   process.exit(fail + crash > 0 ? 1 : 0);
   }
 }, 150);

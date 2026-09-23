@@ -9,9 +9,10 @@ lang: en
 
 This file is a **portable, self-contained Markdown reader**. It is one HTML
 file with no server, no account and no build step — it only ever reaches
-out to the network when you ask it to (Open from url…). This
-embedded sample book doubles as the manual — drop in your own `.md` file to
-read something else.
+out to the network when you ask it to (Open from url…, or the
+**Fetch & embed remote media** switch, which downloads a document's images
+at import time). This embedded sample book doubles as the manual — drop in
+your own `.md` file to read something else.
 
 ## Get a document in
 
@@ -21,11 +22,23 @@ There are a few ways to load a book:
    `.markdown` or `.mdx` file.
 2. Drag a `.md`, `.markdown`, `.mdx` or `.txt` file anywhere onto this page.
 3. Choose **Open from url…** in the document menu to fetch a `.md`,
-   `.markdown` or `.mdx` file straight from the web — the only route that
-   ever uses your connection.
+   `.markdown` or `.mdx` file straight from the web.
+4. Choose **Paste from clipboard** to render whatever Markdown text you
+   last copied — no file needed.
 
-The document you are reading stays on this device, so a refresh or an
-accidental close is never a disaster.
+Whatever the route, the document you are reading stays on this device, so a
+refresh or an accidental close is never a disaster.
+
+### Remote media at import time
+
+The **Fetch & embed remote media** switch in the document menu decides how
+media in an imported file is handled. **Off** (the default) strips image,
+video and audio urls out of the source, so the document reads — and
+exports — as pure local text. **On** downloads every image the moment the
+document is imported and rewrites it as data embedded in the file itself,
+so the images survive every export path: Download .md, both HTML exports
+and print. Either way the decision is made at import time and the choice
+is remembered on this device.
 
 ## What the reader supports
 
@@ -162,11 +175,14 @@ stays offline:
 - **Export publishable HTML** — an exact replica of this entire reader with
   the current document baked in, ready to share or host. A handful of
   authoring tools never travel with a publication: "Open Markdown file…",
-  "Open from url…", "Edit HTML metadata" and "Export publishable HTML" are
-  removed from its document menu, the "Include document menu in publication"
-  switch is gone, and the open-file (Ctrl+O) and document-menu rows disappear
-  from its shortcut map and key listeners. Everything else — reading
-  settings, search, the outline, printing — behaves exactly as it does here.
+  "Open from url…", "Paste from clipboard", "Edit HTML metadata" and
+  "Export publishable HTML" are removed from its document menu, and the
+  "Fetch & embed remote media" and "Include document menu in publication"
+  switches are gone, so a publication never carries an import, network or
+  metadata entry point. The open-file (Ctrl+O) and document-menu rows
+  disappear from its shortcut map and key listeners. Everything else —
+  reading settings, search, the outline, printing — behaves exactly as it
+  does here.
 - **Print / save as PDF** — paper follows your reading settings (theme,
   size, width, typeface, header accent), right down to the page margins,
   with external links expanded so URLs survive on paper.

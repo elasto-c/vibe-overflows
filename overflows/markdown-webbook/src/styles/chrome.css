@@ -475,14 +475,15 @@
                 color: var(--secondary-text);
                 padding: var(--space-2) var(--space-3) var(--space-1);
             }
-            /* Publication toggle row: label left, inline switch right.
-               The long label wraps within the fixed menu measure and
-               reads as plain body text whether the toggle is on or off —
-               the switch itself carries the state. */
+            /* Toggle rows (publication menu, embed media): label left,
+               inline switch right. The long labels wrap within the fixed
+               menu measure and read as plain body text whether the toggle
+               is on or off — the switch itself carries the state. */
             .menu-item .mi-label {
                 min-width: 0;
                 flex: 1 1 auto;
             }
+            #mi-embed .mi-label,
             #mi-pubmenu .mi-label {
                 color: var(--text-color);
                 white-space: normal;
